@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>禄贵文昌 · AR 实景双层罗盘</title>
+  <style>
+    :root {
+      --bg-deep: #07090e;
+      --glass: rgba(12, 16, 24, 0.72);
+      --glass-strong: rgba(10, 14, 22, 0.90);
+      --border: rgba(232, 197, 107, 0.28);
+      --text-main: #f3efe4;
+      --text-dim: #9aa3b2;
+      --gold: #e8c56b;       /* 天乙贵人 */
+      --gold-soft: rgba(232, 197, 107, 0.22);
+      --lu: #fb923c;         /* 十干禄位 */
+      --lu-soft: rgba(251, 146, 60, 0.22);
+      --wen: #34d399;        /* 本命文昌 */
+      --wen-soft: rgba(52, 211, 153, 0.22);
+      --combo: #c084fc;      /* 多星叠临 */
+      --combo-soft: rgba(192, 132, 252, 0.26);
+      --amber: #f59e0b;      /* 半山余气 */
+      --danger: #f43f5e;     /* 四维中线/警示 */
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bot: env(safe-area-inset-bottom, 0px);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg-deep); color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    }
+
+    /* L0: 摄像头 & 赛博雷达背景 */
+    #bgVideo, #radarCanvas {
+      position: fixed; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; pointer-events: none;
+    }
+    #bgVideo { z-index: 0; opacity: 0; transition: opacity 0.35s ease; }
+    #bgVideo.active { opacity: 1; }
+    #radarCanvas { z-index: 1; transition: opacity 0.35s ease; }
+    #radarCanvas.dimmed { opacity: 0.22; }
+
+    /* L1: AR 实景光柱与准星层 */
+    #arStage {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none; overflow: hidden;
+    }
+    #arBeamLayer { position: absolute; inset: 0; }
+    .ar-beam {
+      position: absolute; top: 0; bottom: 0; transform: translateX(-50%);
+      transition: background 0.15s ease;
+    }
+    .ar-beam-core {
+      position: absolute; top: 14%; bottom: 18%; left: 50%; width: 2px;
+      transform: translateX(-50%); opacity: 0.85;
+    }
+    .ar-corner-line {
+      position: absolute; top: 12%; bottom: 20%; width: 0;
+      border-left: 1.5px dashed rgba(244, 63, 94, 0.78);
+      transform: translateX(-50%);
+    }
+    .ar-corner-tag {
+      position: absolute; top: 22%; left: 4px; font-size: 10px;
+      color: #fda4af; background: rgba(45, 10, 18, 0.82);
+      padding: 2px 5px; border-radius: 4px; white-space: nowrap;
+      border: 1px solid rgba(244, 63, 94, 0.45);
+    }
+
+    #reticle {
+      position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+      width: 68px; height: 68px; border-radius: 50%;
+      border: 1.5px solid rgba(232, 197, 107, 0.45);
+      box-shadow: 0 0 18px rgba(0, 0, 0, 0.45);
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    }
+    #reticle::before, #reticle::after {
+      content: ""; position: absolute; background: rgba(244, 63, 94, 0.72);
+    }
+    #reticle::before { left: 50%; top: -12px; width: 1px; height: 92px; transform: translateX(-50%); }
+    #reticle::after { top: 50%; left: -12px; height: 1px; width: 92px; transform: translateY(-50%); }
+    #reticleDot {
+      position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
+      border-radius: 50%; background: var(--danger);
+      transform: translate(-50%, -50%); box-shadow: 0 0 8px var(--danger);
+    }
+    #reticle.lock-core {
+      border-width: 2.5px; transform: translate(-50%, -50%) scale(1.08);
+    }
+    #reticle.lock-wing {
+      border-style: dashed; border-color: var(--amber);
+    }
+    #centerTag {
+      position: absolute; left: 50%; top: calc(44% - 56px); transform: translateX(-50%);
+      padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      background: var(--glass-strong); border: 1px solid var(--border);
+      white-space: nowrap; opacity: 0; transition: opacity 0.2s;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    }
+    #centerTag.show { opacity: 1; }
+
+    #turnHint {
+      position: absolute; top: 44%; transform: translateY(-50%);
+      padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      background: var(--glass-strong); border: 1px solid var(--border);
+      color: var(--gold); white-space: nowrap; display: none;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+    }
+    #turnHint.left { left: 10px; display: block; }
+    #turnHint.right { right: 10px; display: block; }
+
+    #cornerWarning {
+      position: absolute; left: 50%; top: calc(44% + 48px); transform: translateX(-50%);
+      padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 600;
+      color: #fecdd3; background: rgba(76, 5, 25, 0.88);
+      border: 1px solid rgba(244, 63, 94, 0.65); white-space: nowrap;
+      display: none;
+    }
+    #cornerWarning.show { display: block; }
+
+    /* L2: 透明拖拽交互区（绝不锁死） */
+    #dragLayer {
+      position: fixed; inset: 0; z-index: 3; touch-action: none; cursor: grab;
+    }
+    #dragLayer:active { cursor: grabbing; }
+
+    /* L3: 顶部 HUD */
+    #topHud {
+      position: fixed; top: calc(8px + var(--safe-top)); left: 8px; right: 8px;
+      z-index: 10; display: flex; flex-direction: column; gap: 6px;
+      pointer-events: none;
+    }
+    #topHud > * { pointer-events: auto; }
+
+    .hud-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 14px; padding: 6px 8px;
+    }
+    .brand-box { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
+    .brand-icon {
+      width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+      display: grid; place-items: center; font-size: 14px; font-weight: 700;
+      color: var(--gold); border: 1px solid rgba(232, 197, 107, 0.5);
+      background: radial-gradient(circle, rgba(232,197,107,0.22), rgba(10,14,22,0.9));
+    }
+    .brand-text { min-width: 0; }
+    #appTitle {
+      font-size: 13px; font-weight: 700; letter-spacing: 0.3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #baziMini {
+      font-size: 10px; color: var(--text-dim); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    #baziMini b { color: var(--gold); font-weight: 600; }
+
+    .btn-row { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    .hud-btn {
+      height: 30px; padding: 0 8px; border-radius: 9px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06); color: var(--text-main);
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .hud-btn.icon-only { width: 30px; padding: 0; font-size: 14px; }
+    .hud-btn.active {
+      border-color: var(--gold); color: var(--gold);
+      background: rgba(232, 197, 107, 0.16);
+    }
+    .status-pill {
+      height: 26px; padding: 0 8px; border-radius: 999px; font-size: 10px; font-weight: 600;
+      border: 1px solid rgba(232,197,107,0.35); background: rgba(232,197,107,0.1);
+      color: var(--gold); cursor: pointer; white-space: nowrap;
+    }
+    .status-pill.live {
+      border-color: var(--wen); background: rgba(52,211,153,0.14); color: var(--wen);
+    }
+
+    /* 模式切换与快捷目标行 */
+    .mode-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      flex-wrap: wrap;
+    }
+    .mode-tabs {
+      display: inline-flex; background: var(--glass); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 11px; padding: 3px; gap: 3px;
+    }
+    .mode-tab {
+      border: none; background: transparent; color: var(--text-dim);
+      font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: 8px; cursor: pointer;
+    }
+    .mode-tab.active[data-mode="guiren"] { background: var(--gold-soft); color: var(--gold); }
+    .mode-tab.active[data-mode="lu"] { background: var(--lu-soft); color: var(--lu); }
+    .mode-tab.active[data-mode="wenchang"] { background: var(--wen-soft); color: var(--wen); }
+    .mode-tab.active[data-mode="all"] { background: var(--combo-soft); color: var(--combo); }
+
+    .target-chips {
+      display: flex; align-items: center; gap: 5px; overflow-x: auto; max-width: 100%;
+      scrollbar-width: none;
+    }
+    .target-chips::-webkit-scrollbar { display: none; }
+    .chip {
+      font-size: 10px; font-weight: 600; padding: 4px 8px; border-radius: 999px;
+      background: var(--glass); border: 1px solid rgba(255,255,255,0.14);
+      color: var(--text-main); cursor: pointer; white-space: nowrap;
+    }
+
+    /* 顶部地平线标尺 */
+    #horizonWrap {
+      position: relative; height: 48px; border-radius: 12px; overflow: hidden;
+      background: var(--glass); backdrop-filter: blur(10px);
+      border: 1px solid rgba(232, 197, 107, 0.24);
+    }
+    #horizonCanvas { width: 100%; height: 100%; display: block; }
+    #horizonNeedle {
+      position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
+      background: var(--danger); transform: translateX(-50%); pointer-events: none;
+      box-shadow: 0 0 6px var(--danger);
+    }
+
+    #httpsBanner {
+      display: none; padding: 6px 10px; border-radius: 10px; font-size: 11px;
+      background: rgba(120, 53, 15, 0.88); border: 1px solid rgba(245, 158, 11, 0.55);
+      color: #fde68a; line-height: 1.4;
+    }
+    #httpsBanner.show { display: block; }
+
+    /* L3 底部：可折叠宫位胶囊 + 双层罗盘 + 滑块 */
+    #bottomHud {
+      position: fixed; left: 8px; right: 8px; bottom: calc(8px + var(--safe-bot));
+      z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 6px;
+      pointer-events: none;
+    }
+    #bottomHud > * { pointer-events: auto; }
+
+    /* 可折叠宫位胶囊 */
+    #palaceDock {
+      width: 100%; max-width: 440px;
+      background: var(--glass-strong); backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: 14px;
+      overflow: hidden; transition: opacity 0.2s, transform 0.2s;
+    }
+    #palaceDock.hidden { display: none; }
+    #palacePill {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      padding: 7px 10px; cursor: pointer;
+    }
+    .pill-left { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+    #palaceDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-dim); }
+    #palaceTitle {
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .pill-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    #palaceDeg {
+      font-size: 11px; font-variant-numeric: tabular-nums; color: var(--gold);
+      background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 6px;
+    }
+    .pill-mini-btn {
+      border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.06);
+      color: var(--text-main); font-size: 10px; border-radius: 7px; padding: 3px 7px; cursor: pointer;
+    }
+    #palaceBody {
+      display: none; padding: 0 10px 10px; border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 11px; line-height: 1.5; color: #d6dbe5;
+    }
+    #palaceDock.expanded #palaceBody { display: block; }
+    .overlap-bar {
+      display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 3px;
+      margin: 7px 0; text-align: center; font-size: 10px;
+    }
+    .ov-seg {
+      padding: 3px 4px; border-radius: 6px; background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.09); color: var(--text-dim);
+    }
+    .ov-seg.active {
+      background: rgba(232,197,107,0.18); border-color: var(--gold); color: var(--text-main); font-weight: 700;
+    }
+    .advice-box {
+      margin-top: 5px; padding: 6px 8px; border-radius: 8px;
+      background: rgba(255,255,255,0.04); border-left: 2.5px solid var(--gold);
+      font-size: 11px;
+    }
+
+    /* 双层罗盘区 */
+    .luopan-stage {
+      display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    }
+    .nudge-btn {
+      width: 54px; height: 44px; border-radius: 12px;
+      background: var(--glass); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.14); color: var(--text-main);
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .nudge-btn span { font-size: 9px; color: var(--text-dim); font-weight: 400; }
+
+    .luopan-wrap {
+      position: relative; width: 214px; height: 214px; flex-shrink: 0;
+    }
+    #luopanSvg {
+      width: 100%; height: 100%; display: block;
+      filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.72));
+    }
+    #luopanPointer {
+      position: absolute; left: 50%; top: -2px; bottom: 0; width: 2px;
+      background: linear-gradient(to bottom, var(--danger) 0%, rgba(244,63,94,0.22) 55%, rgba(244,63,94,0.6) 100%);
+      transform: translateX(-50%); pointer-events: none;
+    }
+    #luopanPointer::before {
+      content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      border-left: 5px solid transparent; border-right: 5px solid transparent;
+      border-bottom: 9px solid var(--danger);
+    }
+    .luopan-center {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: 86px; height: 86px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(16,22,34,0.96), rgba(6,9,15,0.98));
+      border: 1.5px solid rgba(232, 197, 107, 0.55);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; pointer-events: none;
+    }
+    #readoutDeg { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fff; line-height: 1.1; }
+    #readoutMain { font-size: 11px; font-weight: 700; color: var(--gold); margin-top: 2px; }
+    #readoutSub { font-size: 9px; color: var(--text-dim); margin-top: 1px; }
+
+    /* 底部滑块 */
+    .slider-bar {
+      width: 100%; max-width: 440px;
+      display: flex; align-items: center; gap: 8px;
+      background: var(--glass); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px 10px;
+      font-size: 11px; color: var(--text-dim);
+    }
+    #headingSlider {
+      flex: 1; accent-color: var(--gold); height: 5px; cursor: pointer;
+    }
+    #sliderVal { width: 44px; text-align: right; color: var(--text-main); font-variant-numeric: tabular-nums; }
+
+    /* Toast */
+    #toast {
+      position: fixed; left: 50%; top: calc(116px + var(--safe-top)); transform: translateX(-50%);
+      z-index: 40; padding: 7px 14px; border-radius: 10px; font-size: 12px;
+      background: rgba(15, 23, 42, 0.94); border: 1px solid rgba(232, 197, 107, 0.5);
+      color: var(--text-main); opacity: 0; pointer-events: none;
+      transition: opacity 0.25s; max-width: 90%; text-align: center;
+    }
+    #toast.show { opacity: 1; }
+
+    /* 模态弹窗层 */
+    .modal-mask {
+      position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.68);
+      backdrop-filter: blur(6px); display: none; align-items: flex-end; justify-content: center;
+      padding: 12px;
+    }
+    .modal-mask.open { display: flex; }
+    .modal-card {
+      width: 100%; max-width: 460px; max-height: 84vh; overflow-y: auto;
+      background: #0d121c; border: 1px solid var(--border); border-radius: 18px;
+      padding: 14px; color: var(--text-main);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+    }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .modal-head h3 { margin: 0; font-size: 15px; color: var(--gold); }
+    .close-btn {
+      width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06); color: var(--text-main); cursor: pointer; font-size: 15px;
+    }
+    .field-group { margin-bottom: 10px; }
+    .field-label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+    .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    input[type="date"], input[type="time"], select {
+      width: 100%; padding: 8px 10px; border-radius: 10px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16);
+      color: var(--text-main); font-size: 13px;
+    }
+    .seg-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 6px; }
+    .seg-btn {
+      padding: 7px 6px; border-radius: 9px; font-size: 11px; font-weight: 600;
+      border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05);
+      color: var(--text-dim); cursor: pointer; text-align: center;
+    }
+    .seg-btn.active {
+      border-color: var(--gold); background: rgba(232,197,107,0.18); color: var(--gold);
+    }
+    .stem-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .pillar-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+    .pillar-card {
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; padding: 6px; text-align: center;
+    }
+    .pillar-card.highlight { border-color: var(--gold); background: rgba(232,197,107,0.12); }
+    .pillar-card small { display: block; font-size: 10px; color: var(--text-dim); }
+    .pillar-card strong { font-size: 15px; letter-spacing: 1px; }
+
+    .summary-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px;
+    }
+    .sum-box {
+      padding: 7px; border-radius: 10px; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1); font-size: 11px;
+    }
+    .sum-box b { display: block; margin-bottom: 2px; }
+
+    .diag-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px;
+      font-size: 11px; font-variant-numeric: tabular-nums;
+    }
+    .diag-item {
+      padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .diag-item small { display: block; color: var(--text-dim); font-size: 10px; }
+    .log-box {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px;
+      background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 7px; max-height: 92px; overflow-y: auto; color: #cbd5e1;
+      margin-top: 8px; line-height: 1.45;
+    }
+    .primary-btn {
+      width: 100%; padding: 10px; border-radius: 11px; border: none;
+      background: linear-gradient(135deg, #d4a64a, #f3d586); color: #111827;
+      font-size: 13px; font-weight: 800; cursor: pointer; margin-top: 6px;
+    }
+
+    @media (max-height: 700px) {
+      .luopan-wrap { width: 184px; height: 184px; }
+      .luopan-center { width: 76px; height: 76px; }
+      #readoutDeg { font-size: 14px; }
+      #horizonWrap { height: 42px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- L0: 实景视频与赛博雷达 -->
+  <video id="bgVideo" autoplay playsinline muted></video>
+  <canvas id="radarCanvas"></canvas>
+
+  <!-- L1: AR 空间光柱与准星 -->
+  <div id="arStage">
+    <div id="arBeamLayer"></div>
+    <div id="centerTag"></div>
+    <div id="reticle"><div id="reticleDot"></div></div>
+    <div id="turnHint"></div>
+    <div id="cornerWarning"></div>
+  </div>
+
+  <!-- L2: 透明触摸拖拽层 -->
+  <div id="dragLayer"></div>
+
+  <!-- L3: 顶部 HUD -->
+  <div id="topHud">
+    <div class="hud-bar">
+      <div class="brand-box">
+        <div class="brand-icon" id="brandGlyph">贵</div>
+        <div class="brand-text">
+          <div id="appTitle">天乙贵人 · AR罗盘</div>
+          <div id="baziMini">排盘加载中...</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="status-pill" id="btnSensorStatus" type="button">模拟 · 诊断</button>
+        <button class="hud-btn" id="btnToggleDetails" type="button">详情</button>
+        <button class="hud-btn icon-only" id="btnCamera" type="button" title="实景摄像头">📷</button>
+        <button class="hud-btn icon-only" id="btnCompass" type="button" title="真机磁力计">🧭</button>
+        <button class="hud-btn icon-only" id="btnBazi" type="button" title="八字与排盘设置">⊞</button>
+        <button class="hud-btn icon-only" id="btnInfo" type="button" title="口诀与用法说明">ⓘ</button>
+      </div>
+    </div>
+
+    <div class="mode-row">
+      <div class="mode-tabs" id="modeTabs">
+        <button class="mode-tab active" data-mode="guiren" type="button">贵人</button>
+        <button class="mode-tab" data-mode="lu" type="button">禄位</button>
+        <button class="mode-tab" data-mode="wenchang" type="button">文昌</button>
+        <button class="mode-tab" data-mode="all" type="button">叠临全显</button>
+      </div>
+      <div class="target-chips" id="targetChips"></div>
+    </div>
+
+    <div id="horizonWrap">
+      <canvas id="horizonCanvas"></canvas>
+      <div id="horizonNeedle"></div>
+    </div>
+
+    <div id="httpsBanner">
+      检测到非 HTTPS 安全环境（如本地 file:// 或 content://），手机浏览器会拦截摄像头与罗盘传感器。请部署至 GitHub Pages / HTTPS 域名并用 Chrome 或 Safari 打开。
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- L3: 底部罗盘与可折叠宫位胶囊 -->
+  <div id="bottomHud">
+    <div id="palaceDock">
+      <div id="palacePill">
+        <div class="pill-left">
+          <span id="palaceDot"></span>
+          <span id="palaceTitle">丑宫（北偏东）· 丑山</span>
+        </div>
+        <div class="pill-right">
+          <span id="palaceDeg">030.0°</span>
+          <button class="pill-mini-btn" id="btnExpandPill" type="button">展开 ▾</button>
+          <button class="pill-mini-btn" id="btnHidePill" type="button" title="隐藏浮窗">×</button>
+        </div>
+      </div>
+      <div id="palaceBody">
+        <div id="palaceMeta"></div>
+        <div class="overlap-bar" id="overlapBar"></div>
+        <div id="palaceStatusDesc"></div>
+        <div class="advice-box" id="palaceAdvice"></div>
+      </div>
+    </div>
+
+    <div class="luopan-stage">
+      <button class="nudge-btn" id="btnMinus5" type="button">-5°<span>左微调</span></button>
+      <div class="luopan-wrap">
+        <svg id="luopanSvg" viewBox="0 0 320 320"></svg>
+        <div id="luopanPointer"></div>
+        <div class="luopan-center">
+          <div id="readoutDeg">030.0°</div>
+          <div id="readoutMain">丑山 · 丑宫</div>
+          <div id="readoutSub">东北 NE1 · 十二月</div>
+        </div>
+      </div>
+      <button class="nudge-btn" id="btnPlus5" type="button">+5°<span>右微调</span></button>
+    </div>
+
+    <div class="slider-bar">
+      <span>方位模拟</span>
+      <input id="headingSlider" type="range" min="0" max="359.9" step="0.1" value="30" />
+      <span id="sliderVal">30.0°</span>
+    </div>
+  </div>
+
+  <!-- 弹窗 1：八字与排盘设置 -->
+  <div class="modal-mask" id="baziModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>八字排盘与神煞基准</h3>
+        <button class="close-btn" data-close="baziModal" type="button">×</button>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">输入方式</span>
+        <div class="seg-group" id="inputModeGroup">
+          <button class="seg-btn active" data-val="birth" type="button">公历生日排盘</button>
+          <button class="seg-btn" data-val="stem" type="button">隐私快选天干</button>
+        </div>
+      </div>
+
+      <div id="birthInputs">
+        <div class="field-group input-row">
+          <div>
+            <span class="field-label">出生日期（公历）</span>
+            <input type="date" id="inpDate" value="1984-03-15" />
+          </div>
+          <div>
+            <span class="field-label">出生时间（选填，用于时柱）</span>
+            <input type="time" id="inpTime" value="18:49" />
+          </div>
+        </div>
+        <div class="pillar-cards" id="pillarCards"></div>
+      </div>
+
+      <div id="stemInputs" style="display:none;">
+        <div class="field-group">
+          <span class="field-label">直接选择日干 / 年干（无需输入生日）</span>
+          <div class="stem-grid" id="stemGrid"></div>
+        </div>
+      </div>
+
+      <div class="summary-grid" id="baziStarSummary"></div>
+
+      <div class="field-group" style="margin-top:10px;">
+        <span class="field-label">查表基准（对贵人 / 禄位 / 文昌同时生效）</span>
+        <div class="seg-group" id="basisGroup">
+          <button class="seg-btn active" data-val="day" type="button">日干为主</button>
+          <button class="seg-btn" data-val="year" type="button">年干为主</button>
+          <button class="seg-btn" data-val="both" type="button">日干 + 年干双显</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">天乙贵人口诀派别</span>
+        <div class="seg-group" id="guirenRuleGroup">
+          <button class="seg-btn active" data-val="classic" type="button">古法昼夜分定</button>
+          <button class="seg-btn" data-val="common" type="button">通行口诀</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">方位锁定口径</span>
+        <div class="seg-group" id="rangeModeGroup">
+          <button class="seg-btn active" data-val="dual30" type="button">30° 双层穿插（推荐）</button>
+          <button class="seg-btn" data-val="strict15" type="button">15° 严格地支本山</button>
+        </div>
+      </div>
+
+      <button class="primary-btn" data-close="baziModal" type="button">应用并返回 AR 罗盘</button>
+    </div>
+  </div>
+
+  <!-- 弹窗 2：传感器诊断与校准 -->
+  <div class="modal-mask" id="diagModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>传感器诊断与磁偏校准</h3>
+        <button class="close-btn" data-close="diagModal" type="button">×</button>
+      </div>
+
+      <div class="diag-grid">
+        <div class="diag-item"><small>检测平台</small><strong id="diagOS">-</strong></div>
+        <div class="diag-item"><small>当前驱动引擎</small><strong id="diagEngine">模拟模式</strong></div>
+        <div class="diag-item"><small>数据频率 / 状态</small><strong id="diagHz">0.0 Hz</strong></div>
+        <div class="diag-item"><small>姿态 R22 / 竖屏权重</small><strong id="diagPose">-</strong></div>
+        <div class="diag-item"><small>原始角 / 滤波角</small><strong id="diagAngles">-</strong></div>
+        <div class="diag-item"><small>原始 α / β / γ / abs</small><strong id="diagRaw">-</strong></div>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">手动磁偏角校准：<b id="offsetVal" style="color:var(--gold);">0.0°</b>（室内钢筋干扰时可对照系统指南针微调）</span>
+        <input id="offsetSlider" type="range" min="-30" max="30" step="0.5" value="0" style="width:100%; accent-color:var(--gold);" />
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">手动强制测试传感通道（单源互斥）</span>
+        <div class="seg-group" id="forceEngineGroup">
+          <button class="seg-btn" data-eng="auto" type="button">自动探测</button>
+          <button class="seg-btn" data-eng="android_9axis" type="button">Android 9轴</button>
+          <button class="seg-btn" data-eng="android_abs_euler" type="button">Android 绝对</button>
+          <button class="seg-btn" data-eng="generic_euler" type="button">通用方向</button>
+          <button class="seg-btn" data-eng="ios_webkit" type="button">iOS 指南针</button>
+        </div>
+      </div>
+
+      <div class="advice-box" style="border-left-color:var(--wen);">
+        校准提示：摘除磁吸壳、远离音箱与铁桌，握紧手机在空中画「8 字」3~5 圈。若 <code>abs: false</code> 说明当前浏览器仅提供相对方位，请尝试切用 Chrome 打开或用上方偏移滑块对齐正北。
+      </div>
+
+      <div class="log-box" id="diagLog">等待传感器初始化...</div>
+    </div>
+  </div>
+
+  <!-- 弹窗 3：口诀与双层穿插说明 -->
+  <div class="modal-mask" id="infoModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>禄 · 贵 · 文昌 与双层穿插说明</h3>
+        <button class="close-btn" data-close="infoModal" type="button">×</button>
+      </div>
+      <div style="font-size:12px; line-height:1.65; color:#d6dbe5;">
+        <p style="margin-top:0;"><b style="color:var(--gold);">1. 十二地支 × 二十四山穿插原理</b><br/>
+        内圈十二地支每宫占 <b>30°</b>（对应十二月建与节气），其界线正好平分外圈八天干与四维卦（15°、45°、75°…）。每个地支大宫由「左半山 7.5° + 地支本山核心 15° + 右半山 7.5°」组成。</p>
+        <p><b style="color:var(--lu);">2. 三大本命神煞口诀</b><br/>
+        • <b>天乙贵人（鎏金）</b>：解厄助运、人脉提携（支持古法昼夜分定与通行口诀）。<br/>
+        • <b>十干禄位（橙金）</b>：甲寅、乙卯、丙戊巳、丁己午、庚申、辛酉、壬亥、癸子；主正财、薪俸与稳固根基。<br/>
+        • <b>本命文昌（青玉）</b>：甲巳、乙午、丙戊申、丁己酉、庚亥、辛子、壬寅、癸卯；主学业、考运、策划与灵感。<br/>
+        • <b>多星叠临（紫金）</b>：切至「叠临全显」时自动高亮双吉/三吉重合宫位。</p>
+        <p><b style="color:var(--danger);">3. 吉凶并论实战提醒</b><br/>
+        本命吉方属静态人元方位，实地落点时仍需避开卫生间污秽、尖角冲射、杂物堆积及流年五黄/二黑飞临，并尽量避开四维正中线（45°/135°/225°/315°）以防杂气交冲。</p>
+        <p style="margin-bottom:0; color:var(--text-dim);">URL 独立分流参数：<code>?mode=guiren</code> / <code>?mode=lu</code> / <code>?mode=wenchang</code> / <code>?mode=all</code></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 异步加载 lunar-javascript（无阻塞，加载完成后自动接管精确节气排盘） -->
+  <script async src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.12/lunar.min.js" onload="window.__onLunarReady && window.__onLunarReady()"></script>
+
+  <script>
+  (() => {
+    'use strict';
+
+    /* ================= 1. 命理与罗盘静态数据 ================= */
+    const STEMS = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+    const BRANCHES = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+    const ZODIAC = { 子:'鼠',丑:'牛',寅:'虎',卯:'兔',辰:'龙',巳:'蛇',午:'马',未:'羊',申:'猴',酉:'鸡',戌:'狗',亥:'猪' };
+
+    const BRANCH_DATA = [
+      { id:'子', dir:'正北',   mid:0,   start:345, end:15,  month:'十一月', terms:'大雪、冬至', left:'壬', right:'癸', element:'水' },
+      { id:'丑', dir:'北偏东', mid:30,  start:15,  end:45,  month:'十二月', terms:'小寒、大寒', left:'癸', right:'艮', element:'土' },
+      { id:'寅', dir:'东偏北', mid:60,  start:45,  end:75,  month:'正月',   terms:'立春、雨水', left:'艮', right:'甲', element:'木' },
+      { id:'卯', dir:'正东',   mid:90,  start:75,  end:105, month:'二月',   terms:'惊蛰、春分', left:'甲', right:'乙', element:'木' },
+      { id:'辰', dir:'东偏南', mid:120, start:105, end:135, month:'三月',   terms:'清明、谷雨', left:'乙', right:'巽', element:'土' },
+      { id:'巳', dir:'南偏东', mid:150, start:135, end:165, month:'四月',   terms:'立夏、小满', left:'巽', right:'丙', element:'火' },
+      { id:'午', dir:'正南',   mid:180, start:165, end:195, month:'五月',   terms:'芒种、夏至', left:'丙', right:'丁', element:'火' },
+      { id:'未', dir:'南偏西', mid:210, start:195, end:225, month:'六月',   terms:'小暑、大暑', left:'丁', right:'坤', element:'土' },
+      { id:'申', dir:'西偏南', mid:240, start:225, end:255, month:'七月',   terms:'立秋、处暑', left:'坤', right:'庚', element:'金' },
+      { id:'酉', dir:'正西',   mid:270, start:255, end:285, month:'八月',   terms:'白露、秋分', left:'庚', right:'辛', element:'金' },
+      { id:'戌', dir:'西偏北', mid:300, start:285, end:315, month:'九月',   terms:'寒露、霜降', left:'辛', right:'乾', element:'土' },
+      { id:'亥', dir:'北偏西', mid:330, start:315, end:345, month:'十月',   terms:'立冬、小雪', left:'乾', right:'壬', element:'水' }
+    ];
+
+    const MOUNTAINS_24 = [
+      { name:'子', code:'N2',  dir:'北',   mid:0,   isBranch:true },
+      { name:'癸', code:'N3',  dir:'北',   mid:15,  isBranch:false },
+      { name:'丑', code:'NE1', dir:'东北', mid:30,  isBranch:true },
+      { name:'艮', code:'NE2', dir:'东北', mid:45,  isBranch:false, isCorner:true },
+      { name:'寅', code:'NE3', dir:'东北', mid:60,  isBranch:true },
+      { name:'甲', code:'E1',  dir:'东',   mid:75,  isBranch:false },
+      { name:'卯', code:'E2',  dir:'东',   mid:90,  isBranch:true },
+      { name:'乙', code:'E3',  dir:'东',   mid:105, isBranch:false },
+      { name:'辰', code:'SE1', dir:'东南', mid:120, isBranch:true },
+      { name:'巽', code:'SE2', dir:'东南', mid:135, isBranch:false, isCorner:true },
+      { name:'巳', code:'SE3', dir:'东南', mid:150, isBranch:true },
+      { name:'丙', code:'S1',  dir:'南',   mid:165, isBranch:false },
+      { name:'午', code:'S2',  dir:'南',   mid:180, isBranch:true },
+      { name:'丁', code:'S3',  dir:'南',   mid:195, isBranch:false },
+      { name:'未', code:'SW1', dir:'西南', mid:210, isBranch:true },
+      { name:'坤', code:'SW2', dir:'西南', mid:225, isBranch:false, isCorner:true },
+      { name:'申', code:'SW3', dir:'西南', mid:240, isBranch:true },
+      { name:'庚', code:'W1',  dir:'西',   mid:255, isBranch:false },
+      { name:'酉', code:'W2',  dir:'西',   mid:270, isBranch:true },
+      { name:'辛', code:'W3',  dir:'西',   mid:285, isBranch:false },
+      { name:'戌', code:'NW1', dir:'西北', mid:300, isBranch:true },
+      { name:'乾', code:'NW2', dir:'西北', mid:315, isBranch:false, isCorner:true },
+      { name:'亥', code:'NW3', dir:'西北', mid:330, isBranch:true },
+      { name:'壬', code:'N1',  dir:'北',   mid:345, isBranch:false }
+    ];
+
+    const CORNERS = [
+      { deg:45,  name:'艮中（东北四维界）' },
+      { deg:135, name:'巽中（东南四维界）' },
+      { deg:225, name:'坤中（西南四维界）' },
+      { deg:315, name:'乾中（西北四维界）' }
+    ];
+
+    /* 天乙贵人查表 */
+    const GUIREN_CLASSIC = {
+      甲:{ yang:'未', yin:'丑' }, 戊:{ yang:'丑', yin:'未' }, 庚:{ yang:'丑', yin:'未' },
+      乙:{ yang:'申', yin:'子' }, 己:{ yang:'子', yin:'申' },
+      丙:{ yang:'酉', yin:'亥' }, 丁:{ yang:'亥', yin:'酉' },
+      壬:{ yang:'卯', yin:'巳' }, 癸:{ yang:'巳', yin:'卯' },
+      辛:{ yang:'午', yin:'寅' }
+    };
+    const GUIREN_COMMON = {
+      甲:{ yang:'丑', yin:'未' }, 戊:{ yang:'丑', yin:'未' }, 庚:{ yang:'丑', yin:'未' },
+      乙:{ yang:'子', yin:'申' }, 己:{ yang:'子', yin:'申' },
+      丙:{ yang:'亥', yin:'酉' }, 丁:{ yang:'亥', yin:'酉' },
+      壬:{ yang:'卯', yin:'巳' }, 癸:{ yang:'卯', yin:'巳' },
+      辛:{ yang:'午', yin:'寅' }
+    };
+
+    /* 十干禄位查表 */
+    const LU_TABLE = {
+      甲:'寅', 乙:'卯', 丙:'巳', 丁:'午', 戊:'巳',
+      己:'午', 庚:'申', 辛:'酉', 壬:'亥', 癸:'子'
+    };
+
+    /* 本命文昌查表 */
+    const WENCHANG_TABLE = {
+      甲:'巳', 乙:'午', 丙:'申', 丁:'酉', 戊:'申',
+      己:'酉', 庚:'亥', 辛:'子', 壬:'寅', 癸:'卯'
+    };
+
+    const MODE_META = {
+      guiren:   { title:'天乙贵人 · AR罗盘', glyph:'贵', color:'#e8c56b', soft:'rgba(232,197,107,0.22)' },
+      lu:       { title:'十干禄位 · AR罗盘', glyph:'禄', color:'#fb923c', soft:'rgba(251,146,60,0.22)' },
+      wenchang: { title:'本命文昌 · AR罗盘', glyph:'文', color:'#34d399', soft:'rgba(52,211,153,0.22)' },
+      all:      { title:'禄贵文昌 · 叠临全盘', glyph:'合', color:'#c084fc', soft:'rgba(192,132,252,0.24)' }
+    };
+
+    /* ================= 2. 全局状态 ================= */
+    const urlMode = new URLSearchParams(location.search).get('mode');
+    const state = {
+      mode: MODE_META[urlMode] ? urlMode : 'guiren',
+      inputMode: 'birth',          // 'birth' | 'stem'
+      manualStem: '戊',
+      dateStr: '1984-03-15',
+      timeStr: '18:49',
+      basis: 'day',                // 'day' | 'year' | 'both'
+      guirenRule: 'classic',       // 'classic' | 'common'
+      rangeMode: 'dual30',         // 'dual30' | 'strict15'
+      bazi: null,
+      targets: [],                 // 聚合后的当前激活目标宫位
+      heading: 30,                 // 当前显示角度 [0, 360)
+      targetHeading: null,         // 平滑动画目标角
+      magneticOffset: 0,
+      pillHidden: false,
+      pillExpanded: false,
+      cameraActive: false,
+      sensorLive: false,
+      activeEngine: 'sim',
+      logs: []
+    };
+
+    /* ================= 3. 角度工具 ================= */
+    const norm360 = a => ((a % 360) + 360) % 360;
+    const shortestDelta = (from, to) => {
+      let d = (to - from + 540) % 360 - 180;
+      return d === -180 ? 180 : d;
+    };
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const getBranchById = id => BRANCH_DATA.find(b => b.id === id);
+
+    function getBranchAtDeg(deg) {
+      const idx = Math.floor(norm360(deg + 15) / 30) % 12;
+      return BRANCH_DATA[idx];
+    }
+    function getMountainAtDeg(deg) {
+      const idx = Math.floor(norm360(deg + 7.5) / 15) % 24;
+      return MOUNTAINS_24[idx];
+    }
+
+    /* ================= 4. 精准离线八字引擎 + lunar-javascript 异步升级 ================= */
+    // 十二节 approximate 公历日期（月, 节气交节粗略日，lunar.js 加载后将自动升级为精确到分钟的节气）
+    const JIE_DATES = [
+      [1, 5],  // 小寒 -> 丑
+      [2, 4],  // 立春 -> 寅
+      [3, 6],  // 惊蛰 -> 卯
+      [4, 5],  // 清明 -> 辰
+      [5, 6],  // 立夏 -> 巳
+      [6, 6],  // 芒种 -> 午
+      [7, 7],  // 小暑 -> 未
+      [8, 8],  // 立秋 -> 申
+      [9, 8],  // 白露 -> 酉
+      [10, 8], // 寒露 -> 戌
+      [11, 7], // 立冬 -> 亥
+      [12, 7]  // 大雪 -> 子
+    ];
+
+    function calcBaziOffline(dateStr, timeStr) {
+      const parts = (dateStr || '1984-03-15').split('-').map(Number);
+      const y = parts[0] || 1984, m = parts[1] || 3, d = parts[2] || 15;
+      let hasTime = Boolean(timeStr && timeStr.includes(':'));
+      let hh = 12, mm = 0;
+      if (hasTime) {
+        const tp = timeStr.split(':').map(Number);
+        hh = tp[0] || 0; mm = tp[1] || 0;
+      }
+
+      // 1) 优先使用已加载的 lunar-javascript
+      if (window.Solar) {
+        try {
+          const solar = window.Solar.fromYmdHms(y, m, d, hh, mm, 0);
+          const eightChar = solar.getLunar().getEightChar();
+          eightChar.setSect(2);
+          const yz = eightChar.getYear();
+          const mz = eightChar.getMonth();
+          const dz = eightChar.getDay();
+          const hz = hasTime ? eightChar.getTime() : '--';
+          return {
+            year: yz, month: mz, day: dz, hour: hz,
+            yearStem: yz[0], dayStem: dz[0],
+            source: 'lunar-javascript 精确节气'
+          };
+        } catch (e) { /* 回退离线 */ }
+      }
+
+      // 2) 离线精准计算（基准：2000-01-01 = 戊午，六十甲子序号 54）
+      let baziYear = y;
+      if (m < 2 || (m === 2 && d < 4)) baziYear -= 1;
+      const yIdx = ((baziYear - 4) % 60 + 60) % 60;
+      const yearStemIdx = yIdx % 10;
+      const yearBranchIdx = yIdx % 12;
+
+      // 月支（立春为寅=2）
+      let mBranchIdx = 1; // 丑
+      const mdVal = m * 100 + d;
+      if (mdVal >= 204 && mdVal < 306) mBranchIdx = 2;
+      else if (mdVal >= 306 && mdVal < 405) mBranchIdx = 3;
+      else if (mdVal >= 405 && mdVal < 506) mBranchIdx = 4;
+      else if (mdVal >= 506 && mdVal < 606) mBranchIdx = 5;
+      else if (mdVal >= 606 && mdVal < 707) mBranchIdx = 6;
+      else if (mdVal >= 707 && mdVal < 808) mBranchIdx = 7;
+      else if (mdVal >= 808 && mdVal < 908) mBranchIdx = 8;
+      else if (mdVal >= 908 && mdVal < 1008) mBranchIdx = 9;
+      else if (mdVal >= 1008 && mdVal < 1107) mBranchIdx = 10;
+      else if (mdVal >= 1107 && mdVal < 1207) mBranchIdx = 11;
+      else if (mdVal >= 1207 || mdVal < 105) mBranchIdx = 0;
+      else mBranchIdx = 1;
+
+      const mOffsetFromYin = (mBranchIdx - 2 + 12) % 12;
+      const yinStem = ((yearStemIdx % 5) * 2 + 2) % 10; // 五虎遁
+      const monthStemIdx = (yinStem + mOffsetFromYin) % 10;
+
+      // 日柱（晚子时 23:00 起换日）
+      const dayShift = (hasTime && hh >= 23) ? 1 : 0;
+      const utcTarget = Date.UTC(y, m - 1, d) + dayShift * 86400000;
+      const utcRef = Date.UTC(2000, 0, 1);
+      const diffDays = Math.round((utcTarget - utcRef) / 86400000);
+      const dIdx = ((54 + diffDays) % 60 + 60) % 60;
+      const dayStemIdx = dIdx % 10;
+      const dayBranchIdx = dIdx % 12;
+
+      // 时柱（五鼠遁）
+      let hourPillar = '--';
+      if (hasTime) {
+        const hBranchIdx = Math.floor(((hh + 1) % 24) / 2);
+        const ziStem = (dayStemIdx % 5) * 2;
+        const hStemIdx = (ziStem + hBranchIdx) % 10;
+        hourPillar = STEMS[hStemIdx] + BRANCHES[hBranchIdx];
+      }
+
+      return {
+        year: STEMS[yearStemIdx] + BRANCHES[yearBranchIdx],
+        month: STEMS[monthStemIdx] + BRANCHES[mBranchIdx],
+        day: STEMS[dayStemIdx] + BRANCHES[dayBranchIdx],
+        hour: hourPillar,
+        yearStem: STEMS[yearStemIdx],
+        dayStem: STEMS[dayStemIdx],
+        source: '离线历法引擎'
+      };
+    }
+
+    /* ================= 5. 神煞目标汇总（支持叠临合并） ================= */
+    function computeTargets() {
+      state.bazi = calcBaziOffline(state.dateStr, state.timeStr);
+      const stemsToUse = [];
+      if (state.inputMode === 'stem') {
+        stemsToUse.push({ stem: state.manualStem, tag: '本命' });
+      } else {
+        if (state.basis === 'day' || state.basis === 'both') {
+          stemsToUse.push({ stem: state.bazi.dayStem, tag: '日' });
+        }
+        if (state.basis === 'year' || state.basis === 'both') {
+          if (state.basis === 'year' || state.bazi.yearStem !== state.bazi.dayStem) {
+            stemsToUse.push({ stem: state.bazi.yearStem, tag: '年' });
+          }
+        }
+      }
+
+      const map = new Map(); // branchId -> { branch, mid, items:[], kinds:Set }
+      const pushHit = (branchId, kind, label, detail) => {
+        const b = getBranchById(branchId);
+        if (!b) return;
+        if (!map.has(branchId)) {
+          map.set(branchId, { branch: b, mid: b.mid, items: [], kinds: new Set() });
+        }
+        const entry = map.get(branchId);
+        if (!entry.items.some(it => it.kind === kind && it.label === label)) {
+          entry.items.push({ kind, label, detail });
+          entry.kinds.add(kind);
+        }
+      };
+
+      const gTable = state.guirenRule === 'classic' ? GUIREN_CLASSIC : GUIREN_COMMON;
+      const includeGuiren = state.mode === 'guiren' || state.mode === 'all';
+      const includeLu = state.mode === 'lu' || state.mode === 'all';
+      const includeWen = state.mode === 'wenchang' || state.mode === 'all';
+
+      stemsToUse.forEach(({ stem, tag }) => {
+        if (includeGuiren) {
+          const g = gTable[stem];
+          if (state.guirenRule === 'classic') {
+            pushHit(g.yang, 'guiren', `${tag}阳贵`, `${stem}干昼贵（阳贵）`);
+            pushHit(g.yin,  'guiren', `${tag}阴贵`, `${stem}干夜贵（阴贵）`);
+          } else {
+            pushHit(g.yang, 'guiren', `${tag}贵人`, `${stem}干天乙贵人`);
+            pushHit(g.yin,  'guiren', `${tag}贵人`, `${stem}干天乙贵人`);
+          }
+        }
+        if (includeLu) {
+          pushHit(LU_TABLE[stem], 'lu', `${tag}禄位`, `${stem}干十干禄（催财稳根）`);
+        }
+        if (includeWen) {
+          pushHit(WENCHANG_TABLE[stem], 'wenchang', `${tag}文昌`, `${stem}干本命文昌（学业策划）`);
+        }
+      });
+
+      state.targets = Array.from(map.values()).map(t => {
+        const isCombo = t.kinds.size >= 2;
+        const mainKind = isCombo ? 'all' : Array.from(t.kinds)[0];
+        const color = isCombo ? '#c084fc' : MODE_META[mainKind].color;
+        const shortLabels = t.items.map(i => i.label).join(' + ');
+        return { ...t, isCombo, mainKind, color, shortLabels };
+      }).sort((a, b) => a.mid - b.mid);
+    }
+
+    /* ================= 6. 双层 SVG 罗盘生成 ================= */
+    function polar(cx, cy, r, deg) {
+      const rad = (deg - 90) * Math.PI / 180;
+      return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+    }
+    function arcPath(cx, cy, rIn, rOut, startDeg, endDeg) {
+      const p1 = polar(cx, cy, rOut, startDeg);
+      const p2 = polar(cx, cy, rOut, endDeg);
+      const p3 = polar(cx, cy, rIn, endDeg);
+      const p4 = polar(cx, cy, rIn, startDeg);
+      return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${rOut} ${rOut} 0 0 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)} A ${rIn} ${rIn} 0 0 0 ${p4.x.toFixed(2)} ${p4.y.toFixed(2)} Z`;
+    }
+
+    function buildLuopanSVG() {
+      const svg = document.getElementById('luopanSvg');
+      const cx = 160, cy = 160;
+      const targetMap = new Map(state.targets.map(t => [t.branch.id, t]));
+
+      let html = `<defs>
+        <radialGradient id="lpBg" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#141b2a"/>
+          <stop offset="100%" stop-color="#070a11"/>
+        </radialGradient>
+      </defs>`;
+      html += `<g id="luopanDisk">`;
+      html += `<circle cx="${cx}" cy="${cy}" r="156" fill="url(#lpBg)" stroke="rgba(232,197,107,0.42)" stroke-width="1.5"/>`;
+
+      // 外圈：24山 (r: 112 -> 150)
+      MOUNTAINS_24.forEach(m => {
+        const s = m.mid - 7.5, e = m.mid + 7.5;
+        let fill = m.isBranch ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.012)';
+        let txtColor = m.isCorner ? '#fda4af' : (m.isBranch ? '#e2e8f0' : '#8b95a7');
+
+        if (m.isBranch && targetMap.has(m.name)) {
+          const t = targetMap.get(m.name);
+          fill = hexAlpha(t.color, 0.28);
+          txtColor = t.color;
+        } else if (!m.isBranch && state.rangeMode === 'dual30') {
+          // 半山穿插着色：左半属前一支，右半属后一支
+          const prevB = getBranchAtDeg(m.mid - 15).id;
+          const nextB = getBranchAtDeg(m.mid + 15).id;
+          if (targetMap.has(prevB)) {
+            html += `<path d="${arcPath(cx, cy, 112, 150, s, m.mid)}" fill="${hexAlpha(targetMap.get(prevB).color, 0.13)}"/>`;
+          }
+          if (targetMap.has(nextB)) {
+            html += `<path d="${arcPath(cx, cy, 112, 150, m.mid, e)}" fill="${hexAlpha(targetMap.get(nextB).color, 0.13)}"/>`;
+          }
+        }
+
+        html += `<path d="${arcPath(cx, cy, 112, 150, s, e)}" fill="${fill}" stroke="rgba(232,197,107,0.22)" stroke-width="0.7"/>`;
+        const pt = polar(cx, cy, 132, m.mid);
+        html += `<text x="${pt.x.toFixed(1)}" y="${pt.y.toFixed(1)}" fill="${txtColor}" font-size="${m.isBranch ? 12 : 10.5}" font-weight="${m.isBranch ? 700 : 500}" text-anchor="middle" dominant-baseline="central" transform="rotate(${m.mid} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)})">${m.name}</text>`;
+      });
+
+      // 内圈：12地支大宫 30° (r: 68 -> 112)，界线精准落在 15°/45°/75°... 平分外圈天干与四维
+      BRANCH_DATA.forEach(b => {
+        const s = b.mid - 15, e = b.mid + 15;
+        const t = targetMap.get(b.id);
+        const fill = t ? hexAlpha(t.color, 0.22) : 'rgba(15,23,42,0.45)';
+        const stroke = t ? hexAlpha(t.color, 0.72) : 'rgba(232,197,107,0.34)';
+        html += `<path d="${arcPath(cx, cy, 68, 112, s, e)}" fill="${fill}" stroke="${stroke}" stroke-width="${t ? 1.2 : 0.85}"/>`;
+
+        // 12地支分界延伸线穿过外圈半山（清晰展示穿插咬合）
+        const pIn = polar(cx, cy, 112, s);
+        const pOut = polar(cx, cy, 154, s);
+        const isCornerLine = (norm360(s) % 90 === 45);
+        html += `<line x1="${pIn.x.toFixed(1)}" y1="${pIn.y.toFixed(1)}" x2="${pOut.x.toFixed(1)}" y2="${pOut.y.toFixed(1)}" stroke="${isCornerLine ? 'rgba(244,63,94,0.65)' : 'rgba(232,197,107,0.38)'}" stroke-width="${isCornerLine ? 1.1 : 0.7}" stroke-dasharray="2.5 2"/>`;
+
+        const pTxt = polar(cx, cy, 94, b.mid);
+        const pSub = polar(cx, cy, 78, b.mid);
+        html += `<text x="${pTxt.x.toFixed(1)}" y="${pTxt.y.toFixed(1)}" fill="${t ? t.color : '#f3efe4'}" font-size="13" font-weight="800" text-anchor="middle" dominant-baseline="central" transform="rotate(${b.mid} ${pTxt.x.toFixed(1)} ${pTxt.y.toFixed(1)})">${b.id}</text>`;
+        const subLbl = t ? (t.isCombo ? '叠吉' : t.items[0].label.slice(-2)) : b.month;
+        html += `<text x="${pSub.x.toFixed(1)}" y="${pSub.y.toFixed(1)}" fill="${t ? t.color : '#8b95a7'}" font-size="7.2" font-weight="${t ? 700 : 400}" text-anchor="middle" dominant-baseline="central" transform="rotate(${b.mid} ${pSub.x.toFixed(1)} ${pSub.y.toFixed(1)})">${subLbl}</text>`;
+      });
+
+      // 外围精细刻度
+      for (let d = 0; d < 360; d += 5) {
+        const major = d % 15 === 0;
+        const p1 = polar(cx, cy, major ? 150 : 152, d);
+        const p2 = polar(cx, cy, 156, d);
+        html += `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}" stroke="rgba(232,197,107,${major ? 0.55 : 0.22})" stroke-width="${major ? 1 : 0.6}"/>`;
+      }
+      html += `</g>`;
+      svg.innerHTML = html;
+    }
+
+    function hexAlpha(hex, a) {
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if (!m) return `rgba(232,197,107,${a})`;
+      return `rgba(${parseInt(m[1],16)},${parseInt(m[2],16)},${parseInt(m[3],16)},${a})`;
+    }
+
+    /* ================= 7. 赛博雷达背景 & 顶部地平线标尺 ================= */
+    const radarCanvas = document.getElementById('radarCanvas');
+    const rCtx = radarCanvas.getContext('2d');
+    const horizonCanvas = document.getElementById('horizonCanvas');
+    const hCtx = horizonCanvas.getContext('2d');
+
+    function resizeCanvases() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      radarCanvas.width = Math.floor(innerWidth * dpr);
+      radarCanvas.height = Math.floor(innerHeight * dpr);
+      rCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const rect = horizonCanvas.getBoundingClientRect();
+      horizonCanvas.width = Math.max(100, Math.floor(rect.width * dpr));
+      horizonCanvas.height = Math.max(40, Math.floor(rect.height * dpr));
+      hCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function drawRadar(t) {
+      const w = innerWidth, h = innerHeight;
+      rCtx.clearRect(0, 0, w, h);
+      const grad = rCtx.createRadialGradient(w * 0.5, h * 0.44, 20, w * 0.5, h * 0.44, Math.max(w, h) * 0.72);
+      grad.addColorStop(0, '#101829');
+      grad.addColorStop(1, '#06080d');
+      rCtx.fillStyle = grad;
+      rCtx.fillRect(0, 0, w, h);
+
+      // 透视经纬网
+      const horizonY = h * 0.44;
+      rCtx.strokeStyle = 'rgba(232, 197, 107, 0.08)';
+      rCtx.lineWidth = 1;
+      for (let i = -6; i <= 6; i++) {
+        const offset = ((state.heading / 360) * 12) % 1;
+        const xTop = w * 0.5 + (i - offset) * 56;
+        const xBot = w * 0.5 + (i - offset) * 210;
+        rCtx.beginPath(); rCtx.moveTo(xTop, horizonY); rCtx.lineTo(xBot, h); rCtx.stroke();
+      }
+      for (let j = 1; j <= 7; j++) {
+        const y = horizonY + Math.pow(j / 7, 1.8) * (h - horizonY);
+        rCtx.beginPath(); rCtx.moveTo(0, y); rCtx.lineTo(w, y); rCtx.stroke();
+      }
+      // 脉动圆环
+      const pulse = (t * 0.04) % 140;
+      rCtx.strokeStyle = `rgba(232,197,107,${Math.max(0, 0.16 - pulse / 900)})`;
+      rCtx.beginPath(); rCtx.arc(w * 0.5, horizonY, 34 + pulse, 0, Math.PI * 2); rCtx.stroke();
+    }
+
+    function drawHorizonTape() {
+      const w = horizonCanvas.clientWidth, h = horizonCanvas.clientHeight;
+      if (!w || !h) return;
+      hCtx.clearRect(0, 0, w, h);
+      const fov = 92; // 视场角 92°
+      const pxPerDeg = w / fov;
+      const targetMap = new Map(state.targets.map(t => [t.branch.id, t]));
+
+      // 上排：12地支大宫（30°）
+      BRANCH_DATA.forEach(b => {
+        const delta = shortestDelta(state.heading, b.mid);
+        if (Math.abs(delta) > fov * 0.72) return;
+        const x = w / 2 + delta * pxPerDeg;
+        const bw = 30 * pxPerDeg;
+        const t = targetMap.get(b.id);
+        if (t) {
+          hCtx.fillStyle = hexAlpha(t.color, 0.22);
+          hCtx.fillRect(x - bw / 2, 0, bw, 20);
+        }
+        hCtx.strokeStyle = 'rgba(232,197,107,0.28)';
+        hCtx.beginPath(); hCtx.moveTo(x - bw / 2, 0); hCtx.lineTo(x - bw / 2, 20); hCtx.stroke();
+        hCtx.fillStyle = t ? t.color : '#cbd5e1';
+        hCtx.font = t ? '700 11px sans-serif' : '500 10px sans-serif';
+        hCtx.textAlign = 'center';
+        hCtx.fillText(`${b.id}宫·${b.dir}`, x, 13);
+      });
+
+      // 分隔线
+      hCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+      hCtx.beginPath(); hCtx.moveTo(0, 21); hCtx.lineTo(w, 21); hCtx.stroke();
+
+      // 下排：24山（15°）
+      MOUNTAINS_24.forEach(m => {
+        const delta = shortestDelta(state.heading, m.mid);
+        if (Math.abs(delta) > fov * 0.62) return;
+        const x = w / 2 + delta * pxPerDeg;
+        const mw = 15 * pxPerDeg;
+        const t = m.isBranch ? targetMap.get(m.name) : null;
+        if (t) {
+          hCtx.fillStyle = hexAlpha(t.color, 0.30);
+          hCtx.fillRect(x - mw / 2, 21, mw, h - 21);
+        }
+        hCtx.strokeStyle = m.isCorner ? 'rgba(244,63,94,0.65)' : 'rgba(255,255,255,0.16)';
+        hCtx.beginPath(); hCtx.moveTo(x, h - 6); hCtx.lineTo(x, h); hCtx.stroke();
+        hCtx.fillStyle = t ? t.color : (m.isCorner ? '#fda4af' : '#94a3b8');
+        hCtx.font = t ? '700 12px sans-serif' : '500 11px sans-serif';
+        hCtx.textAlign = 'center';
+        hCtx.fillText(m.name, x, 37);
+      });
+    }
+
+    /* ================= 8. 渲染 AR 光柱、准星与底部宫位面板 ================= */
+    function renderFrame() {
+      const deg = norm360(state.heading);
+      const curBranch = getBranchAtDeg(deg);
+      const curMtn = getMountainAtDeg(deg);
+      const fov = 68;
+      const w = innerWidth;
+
+      // 旋转罗盘底盘
+      const disk = document.getElementById('luopanDisk');
+      if (disk) disk.setAttribute('transform', `rotate(${(-deg).toFixed(2)} 160 160)`);
+
+      // 中心读数
+      document.getElementById('readoutDeg').textContent = `${deg.toFixed(1).padStart(5, '0')}°`;
+      document.getElementById('readoutMain').textContent = `${curMtn.name}山 · ${curBranch.id}宫`;
+      document.getElementById('readoutSub').textContent = `${curMtn.dir} ${curMtn.code} · ${curBranch.month}`;
+      document.getElementById('palaceDeg').textContent = `${deg.toFixed(1).padStart(5, '0')}°`;
+      document.getElementById('headingSlider').value = deg.toFixed(1);
+      document.getElementById('sliderVal').textContent = `${deg.toFixed(1)}°`;
+
+      // AR 光柱 + 四维界投影
+      const beamLayer = document.getElementById('arBeamLayer');
+      let beamsHtml = '';
+      let nearestTarget = null, nearestAbs = 999, nearestDelta = 0;
+      let lockedTarget = null, lockLevel = 'none'; // 'core' | 'wing' | 'none'
+
+      state.targets.forEach(t => {
+        const delta = shortestDelta(deg, t.mid);
+        const absD = Math.abs(delta);
+        if (absD < nearestAbs) {
+          nearestAbs = absD; nearestDelta = delta; nearestTarget = t;
+        }
+        if (absD <= 7.5) {
+          lockedTarget = t; lockLevel = 'core';
+        } else if (state.rangeMode === 'dual30' && absD <= 15 && lockLevel !== 'core') {
+          lockedTarget = t; lockLevel = 'wing';
+        }
+        if (absD <= fov * 0.72) {
+          const leftPct = 50 + (delta / fov) * 100;
+          const coreW = Math.max(36, (15 / fov) * w);
+          const wingW = state.rangeMode === 'dual30' ? Math.max(72, (30 / fov) * w) : coreW;
+          beamsHtml += `
+            <div class="ar-beam" style="left:${leftPct.toFixed(2)}%; width:${wingW.toFixed(0)}px;
+              background:linear-gradient(90deg, transparent, ${hexAlpha(t.color, state.rangeMode === 'dual30' ? 0.14 : 0)}, ${hexAlpha(t.color, 0.30)}, ${hexAlpha(t.color, state.rangeMode === 'dual30' ? 0.14 : 0)}, transparent);">
+              <div class="ar-beam-core" style="background:linear-gradient(to bottom, transparent, ${t.color}, transparent);"></div>
+            </div>`;
+        }
+      });
+
+      // 四维中线警戒检测
+      let nearCorner = null;
+      CORNERS.forEach(c => {
+        const cd = shortestDelta(deg, c.deg);
+        if (Math.abs(cd) <= 2.5) nearCorner = { ...c, delta: cd };
+        if (Math.abs(cd) <= fov * 0.6) {
+          const leftPct = 50 + (cd / fov) * 100;
+          beamsHtml += `<div class="ar-corner-line" style="left:${leftPct.toFixed(2)}%;"><span class="ar-corner-tag">${c.name.slice(0,2)} ${c.deg}°</span></div>`;
+        }
+      });
+      beamLayer.innerHTML = beamsHtml;
+
+      // 准星 & 中央胶囊 & 转向箭头
+      const reticle = document.getElementById('reticle');
+      const centerTag = document.getElementById('centerTag');
+      const turnHint = document.getElementById('turnHint');
+      const cornerWarn = document.getElementById('cornerWarning');
+
+      reticle.classList.remove('lock-core', 'lock-wing');
+      reticle.style.borderColor = 'rgba(232,197,107,0.45)';
+      reticle.style.boxShadow = '0 0 18px rgba(0,0,0,0.45)';
+
+      if (lockedTarget && lockLevel === 'core') {
+        reticle.classList.add('lock-core');
+        reticle.style.borderColor = lockedTarget.color;
+        reticle.style.boxShadow = `0 0 26px ${hexAlpha(lockedTarget.color, 0.65)}`;
+        centerTag.textContent = `✦ ${lockedTarget.branch.id}山·${ZODIAC[lockedTarget.branch.id]} (${lockedTarget.shortLabels})`;
+        centerTag.style.borderColor = lockedTarget.color;
+        centerTag.style.color = lockedTarget.color;
+        centerTag.classList.add('show');
+        turnHint.className = '';
+      } else if (lockedTarget && lockLevel === 'wing') {
+        reticle.classList.add('lock-wing');
+        centerTag.textContent = `◐ ${lockedTarget.branch.id}宫余气 · 兼跨${curMtn.name}山`;
+        centerTag.style.borderColor = '#f59e0b';
+        centerTag.style.color = '#fbbf24';
+        centerTag.classList.add('show');
+        const dirText = nearestDelta > 0 ? `右微调 ${Math.abs(nearestDelta).toFixed(1)}° 归中` : `左微调 ${Math.abs(nearestDelta).toFixed(1)}° 归中`;
+        turnHint.textContent = dirText;
+        turnHint.className = nearestDelta > 0 ? 'right' : 'left';
+      } else {
+        centerTag.classList.remove('show');
+        if (nearestTarget) {
+          const arrow = nearestDelta > 0 ? `右转 ${Math.abs(nearestDelta).toFixed(0)}° · ${nearestTarget.branch.id}宫 ▶` : `◀ 左转 ${Math.abs(nearestDelta).toFixed(0)}° · ${nearestTarget.branch.id}宫`;
+          turnHint.textContent = arrow;
+          turnHint.style.color = nearestTarget.color;
+          turnHint.className = nearestDelta > 0 ? 'right' : 'left';
+        } else {
+          turnHint.className = '';
+        }
+      }
+
+      if (nearCorner) {
+        cornerWarn.textContent = `⚠ 接近${nearCorner.name}（偏差 ${Math.abs(nearCorner.delta).toFixed(1)}°），气杂宜避开`;
+        cornerWarn.classList.add('show');
+      } else {
+        cornerWarn.classList.remove('show');
+      }
+
+      // 底部宫位胶囊更新
+      updatePalaceDock(deg, curBranch, curMtn, lockedTarget, lockLevel, nearestDelta, nearCorner);
+      drawHorizonTape();
+    }
+
+    function updatePalaceDock(deg, b, m, lockedTarget, lockLevel, delta, nearCorner) {
+      const dot = document.getElementById('palaceDot');
+      const title = document.getElementById('palaceTitle');
+      const meta = document.getElementById('palaceMeta');
+      const ovBar = document.getElementById('overlapBar');
+      const desc = document.getElementById('palaceStatusDesc');
+      const advice = document.getElementById('palaceAdvice');
+
+      const dFromBranch = shortestDelta(b.mid, deg);
+      const zone = dFromBranch < -7.5 ? 'left' : (dFromBranch > 7.5 ? 'right' : 'core');
+
+      if (lockedTarget && lockLevel === 'core') {
+        dot.style.background = lockedTarget.color;
+        title.style.color = lockedTarget.color;
+        title.textContent = `✦ ${b.id}宫核心 · ${m.name}山（${lockedTarget.shortLabels}）`;
+      } else if (lockedTarget && lockLevel === 'wing') {
+        dot.style.background = '#f59e0b';
+        title.style.color = '#fbbf24';
+        title.textContent = `◐ ${b.id}宫余气 · 兼跨${m.name}山（${lockedTarget.shortLabels}）`;
+      } else {
+        dot.style.background = '#64748b';
+        title.style.color = '#f3efe4';
+        title.textContent = `${b.id}宫（${b.dir}）· ${m.name}山`;
+      }
+
+      meta.innerHTML = `月建：<b>${b.month}（${b.terms}）</b> · 宫位中心 ${b.mid}°（当前偏心 ${dFromBranch >= 0 ? '+' : ''}${dFromBranch.toFixed(1)}°）`;
+      ovBar.innerHTML = `
+        <div class="ov-seg ${zone==='left'?'active':''}">左半山 ${b.left} (7.5°)</div>
+        <div class="ov-seg ${zone==='core'?'active':''}">本山核心 ${b.id} (15°)</div>
+        <div class="ov-seg ${zone==='right'?'active':''}">右半山 ${b.right} (7.5°)</div>
+      `;
+
+      if (lockedTarget) {
+        const list = lockedTarget.items.map(i => `<b>${i.label}</b>（${i.detail}）`).join('、');
+        desc.innerHTML = lockLevel === 'core'
+          ? `已锁定纯净地支本山：${list}。`
+          : `处于【${b.id}宫】外延半山余气（兼跨【${m.name}山】），建议${delta > 0 ? '向右' : '向左'}微调 <b>${Math.abs(delta).toFixed(1)}°</b> 归入纯气核心。`;
+
+        const tips = [];
+        if (lockedTarget.kinds.has('guiren')) tips.push('贵人方宜保持明亮整洁，适合洽谈、会客或置放办公主位');
+        if (lockedTarget.kinds.has('lu')) tips.push('禄位主正财与稳健产出，忌堆杂物或逢卫生间泄气');
+        if (lockedTarget.kinds.has('wenchang')) tips.push('文昌位适合摆书桌、电脑、绿植或文房用具助思绪清明');
+        if (lockedTarget.isCombo) tips.unshift('【多星叠临黄金位】一处兼催多重气场，优先作为核心工位或书案朝向');
+        if (nearCorner) tips.push('当前紧贴四维中线，定点摆件请向本山中心避让 3° 以上');
+
+        advice.style.borderLeftColor = lockedTarget.color;
+        advice.innerHTML = tips.join('；') + '。（注：若遇流年五黄/二黑或地支冲煞，以静养洁净为主，不宜强动土。）';
+      } else {
+        desc.textContent = `当前【${b.id}宫·${m.name}山】非所选神煞落点，可依屏幕转向提示或点击顶部目标徽章快速定位。`;
+        advice.style.borderLeftColor = '#64748b';
+        advice.textContent = nearCorner
+          ? `提示：正处于${nearCorner.name}交界线，风水立极定向通常避开正四维中线。`
+          : `小贴士：可随时点击右上「详情」或「×」隐藏此卡片，获得 100% 无遮挡 AR 实景视野。`;
+      }
+    }
+
+    /* ================= 9. UI 同步与快捷按钮 ================= */
+    function syncAllUI() {
+      computeTargets();
+      const meta = MODE_META[state.mode];
+      document.title = meta.title;
+      document.getElementById('appTitle').textContent = meta.title;
+      document.getElementById('brandGlyph').textContent = meta.glyph;
+      document.getElementById('brandGlyph').style.color = meta.color;
+      document.getElementById('brandGlyph').style.borderColor = hexAlpha(meta.color, 0.55);
+
+      // 顶部模式激活态
+      document.querySelectorAll('#modeTabs .mode-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === state.mode);
+      });
+
+      // 迷你八字
+      const bz = state.bazi;
+      document.getElementById('baziMini').innerHTML = state.inputMode === 'stem'
+        ? `隐私快选：<b>${state.manualStem}干</b> · ${state.rangeMode === 'dual30' ? '30°穿插' : '15°本山'}`
+        : `${bz.year} ${bz.month} <b>${bz.day}</b> ${bz.hour}`;
+
+      // 快捷跳转徽章
+      const chips = document.getElementById('targetChips');
+      let cHtml = '';
+      state.targets.forEach(t => {
+        cHtml += `<button class="chip" type="button" data-jump="${t.mid}" style="border-color:${hexAlpha(t.color, 0.6)}; color:${t.color};">${t.branch.id}·${t.isCombo ? '叠吉' : t.items[0].label}</button>`;
+      });
+      if (state.targets.length > 0) {
+        const firstMid = state.targets[0].mid;
+        cHtml += `<button class="chip" type="button" data-jump="${norm360(firstMid + 10)}">余气+10°</button>`;
+        cHtml += `<button class="chip" type="button" data-jump="${norm360(firstMid + 14.5)}">四维界</button>`;
+      }
+      chips.innerHTML = cHtml;
+      chips.querySelectorAll('[data-jump]').forEach(el => {
+        el.addEventListener('click', () => {
+          takeoverManual();
+          state.targetHeading = Number(el.dataset.jump);
+        });
+      });
+
+      // 排盘弹窗四柱卡片与三吉汇总
+      const pCards = document.getElementById('pillarCards');
+      pCards.innerHTML = [
+        { k:'年柱', v:bz.year, hi:state.basis==='year'||state.basis==='both' },
+        { k:'月柱', v:bz.month, hi:false },
+        { k:'日柱', v:bz.day, hi:state.basis==='day'||state.basis==='both' },
+        { k:'时柱', v:bz.hour, hi:false }
+      ].map(p => `<div class="pillar-card ${p.hi?'highlight':''}"><small>${p.k}</small><strong>${p.v}</strong></div>`).join('');
+
+      const refStem = state.inputMode === 'stem' ? state.manualStem : (state.basis === 'year' ? bz.yearStem : bz.dayStem);
+      const gT = (state.guirenRule === 'classic' ? GUIREN_CLASSIC : GUIREN_COMMON)[refStem];
+      document.getElementById('baziStarSummary').innerHTML = `
+        <div class="sum-box" style="border-color:rgba(232,197,107,0.45);"><b style="color:var(--gold);">天乙贵人</b>${gT.yang} / ${gT.yin}</div>
+        <div class="sum-box" style="border-color:rgba(251,146,60,0.45);"><b style="color:var(--lu);">十干禄位</b>${LU_TABLE[refStem]}（${getBranchById(LU_TABLE[refStem]).dir}）</div>
+        <div class="sum-box" style="border-color:rgba(52,211,153,0.45);"><b style="color:var(--wen);">本命文昌</b>${WENCHANG_TABLE[refStem]}（${getBranchById(WENCHANG_TABLE[refStem]).dir}）</div>
+      `;
+
+      buildLuopanSVG();
+      renderFrame();
+    }
+
+    /* ================= 10. 严格单源互斥传感器引擎（3D 倾角补偿 + 防误判瀑布流） ================= */
+    const ua = navigator.userAgent || '';
+    const isAndroid = /Android/i.test(ua);
+    const isTrueIOS = !isAndroid && (/iPad|iPhone|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    const osLabel = isAndroid ? 'Android' : (isTrueIOS ? 'iOS / iPadOS' : 'Desktop / Other');
+    document.getElementById('diagOS').textContent = osLabel;
+
+    let sensorInstance = null;
+    let oriHandler = null;
+    let oriEventName = null;
+    let watchdogTimer = null;
+    let gotFirstPacket = false;
+    let smoothX = Math.sin(state.heading * Math.PI / 180);
+    let smoothY = Math.cos(state.heading * Math.PI / 180);
+    let packetTimes = [];
+    let lastRawInfo = { rawDeg: 0, filteredDeg: 0, r22: 1, w: 0, a: null, b: null, g: null, abs: null, wk: null };
+
+    function addLog(msg) {
+      const ts = new Date().toTimeString().slice(0, 8);
+      state.logs.unshift(`[${ts}] ${msg}`);
+      if (state.logs.length > 24) state.logs.pop();
+      const box = document.getElementById('diagLog');
+      if (box) box.textContent = state.logs.join('\n');
+    }
+
+    function showToast(msg, ms = 2400) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.remove('show'), ms);
+    }
+
+    function stopAllSensors() {
+      clearTimeout(watchdogTimer);
+      watchdogTimer = null;
+      if (sensorInstance) {
+        try { sensorInstance.stop(); } catch (e) {}
+        sensorInstance = null;
+      }
+      if (oriHandler && oriEventName) {
+        window.removeEventListener(oriEventName, oriHandler, true);
+        oriHandler = null;
+        oriEventName = null;
+      }
+      state.sensorLive = false;
+      gotFirstPacket = false;
+      packetTimes = [];
+      updateSensorBadge();
+    }
+
+    function takeoverManual() {
+      if (state.sensorLive || state.activeEngine !== 'sim') {
+        stopAllSensors();
+        state.activeEngine = 'sim';
+        updateSensorBadge();
+      }
+    }
+
+    function updateSensorBadge() {
+      const pill = document.getElementById('btnSensorStatus');
+      const btnC = document.getElementById('btnCompass');
+      const engNames = {
+        sim: '模拟模式',
+        android_9axis: 'Android 9轴四元数',
+        android_abs_euler: 'Android 绝对3D',
+        generic_euler: '通用方向3D',
+        ios_webkit: 'iOS 指南针'
+      };
+      document.getElementById('diagEngine').textContent = engNames[state.activeEngine] || state.activeEngine;
+      if (state.sensorLive) {
+        pill.textContent = '真机 · 诊断';
+        pill.classList.add('live');
+        btnC.classList.add('active');
+      } else {
+        pill.textContent = '模拟 · 诊断';
+        pill.classList.remove('live');
+        btnC.classList.remove('active');
+      }
+    }
+
+    // 连续 ENU 3D 倾角融合：平放用机身顶部 +Y，竖屏用后置镜头 -Z，无缝消除 90° 翻转
+    function computeTiltHeading(R01, R11, R02, R12, R22) {
+      const absR22 = Math.abs(R22);
+      const w = clamp((0.75 - absR22) / 0.20, 0, 1); // >=0.75 平放(0), <=0.55 竖屏(1)
+      const ex = (1 - w) * R01 + w * (-R02);
+      const ny = (1 - w) * R11 + w * (-R12);
+      const mag = Math.hypot(ex, ny);
+      if (mag < 0.08) return { valid: false, deg: state.heading, r22: R22, w };
+      const deg = norm360(Math.atan2(ex, ny) * 180 / Math.PI);
+      return { valid: true, deg, r22: R22, w };
+    }
+
+    function headingFromEuler(alpha, beta, gamma) {
+      const deg2rad = Math.PI / 180;
+      const a = alpha * deg2rad, b = beta * deg2rad, g = gamma * deg2rad;
+      const cZ = Math.cos(a), sZ = Math.sin(a);
+      const cX = Math.cos(b), sX = Math.sin(b);
+      const cY = Math.cos(g), sY = Math.sin(g);
+
+      const R01 = -sZ * cX;
+      const R11 =  cZ * cX;
+      const R02 =  cZ * sY + sZ * sX * cY;
+      const R12 =  sZ * sY - cZ * sX * cY;
+      const R22 =  cX * cY;
+      return computeTiltHeading(R01, R11, R02, R12, R22);
+    }
+
+    function headingFromQuat(q) {
+      const [x, y, z, w] = q;
+      const R01 = 2 * (x * y - z * w);
+      const R11 = 1 - 2 * (x * x + z * z);
+      const R02 = 2 * (x * z + y * w);
+      const R12 = 2 * (y * z - x * w);
+      const R22 = 1 - 2 * (x * x + y * y);
+      return computeTiltHeading(R01, R11, R02, R12, R22);
+    }
+
+    function pushSensorHeading(rawDeg, meta) {
+      const now = performance.now();
+      packetTimes.push(now);
+      while (packetTimes.length && now - packetTimes[0] > 1000) packetTimes.shift();
+
+      const calibrated = norm360(rawDeg + state.magneticOffset);
+      const rad = calibrated * Math.PI / 180;
+      const sx = Math.sin(rad), sy = Math.cos(rad);
+
+      if (!gotFirstPacket) {
+        gotFirstPacket = true;
+        clearTimeout(watchdogTimer);
+        state.sensorLive = true;
+        state.targetHeading = null;
+        smoothX = sx; smoothY = sy;
+        state.heading = calibrated;
+        updateSensorBadge();
+        addLog(`已锁定 ${state.activeEngine} 首帧 ${calibrated.toFixed(1)}°`);
+      } else {
+        const diff = Math.abs(shortestDelta(state.heading, calibrated));
+        if (diff > 0.30) {
+          const factor = diff > 25 ? 0.36 : (diff > 8 ? 0.22 : 0.14);
+          smoothX += (sx - smoothX) * factor;
+          smoothY += (sy - smoothY) * factor;
+          state.heading = norm360(Math.atan2(smoothX, smoothY) * 180 / Math.PI);
+        }
+      }
+
+      lastRawInfo = {
+        rawDeg: calibrated,
+        filteredDeg: state.heading,
+        r22: meta.r22 ?? 1,
+        w: meta.w ?? 0,
+        a: meta.a ?? null,
+        b: meta.b ?? null,
+        g: meta.g ?? null,
+        abs: meta.abs ?? null,
+        wk: meta.wk ?? null
+      };
+    }
+
+    async function requestOrientationPermissionIfNeeded() {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const res = await DeviceOrientationEvent.requestPermission();
+          addLog(`requestPermission => ${res}`);
+          if (res !== 'granted') {
+            showToast('未授予方向传感器权限，已保持模拟模式');
+            return false;
+          }
+        } catch (err) {
+          addLog(`requestPermission 异常: ${err.message}`);
+        }
+      }
+      return true;
+    }
+
+    async function startSensorWaterfall(forceEngine = 'auto') {
+      if (!window.isSecureContext) {
+        showToast('非 HTTPS 环境无法调用传感器，请部署至 GitHub Pages');
+        return;
+      }
+      const ok = await requestOrientationPermissionIfNeeded();
+      if (!ok) return;
+
+      const chain = forceEngine !== 'auto'
+        ? [forceEngine]
+        : (isTrueIOS
+            ? ['ios_webkit', 'android_abs_euler', 'generic_euler']
+            : ['android_9axis', 'android_abs_euler', 'generic_euler']);
+
+      addLog(`启动传感链 (${osLabel}): ${chain.join(' → ')}`);
+      runEngineAt(chain, 0);
+    }
+
+    function runEngineAt(chain, idx) {
+      stopAllSensors();
+      if (idx >= chain.length) {
+        state.activeEngine = 'sim';
+        updateSensorBadge();
+        showToast('未检测到可用磁力计数据，已切回模拟模式');
+        addLog('所有传感通道均无数据包，回退模拟模式');
+        return;
+      }
+
+      const eng = chain[idx];
+      state.activeEngine = eng;
+      updateSensorBadge();
+      const next = reason => {
+        addLog(`${eng} 降级: ${reason}`);
+        runEngineAt(chain, idx + 1);
+      };
+
+      if (eng === 'android_9axis') {
+        if (typeof window.AbsoluteOrientationSensor !== 'function') {
+          return next('浏览器不支持 AbsoluteOrientationSensor');
+        }
+        try {
+          sensorInstance = new window.AbsoluteOrientationSensor({ frequency: 30, referenceFrame: 'device' });
+          sensorInstance.addEventListener('reading', () => {
+            if (!sensorInstance || !sensorInstance.quaternion) return;
+            const res = headingFromQuat(sensorInstance.quaternion);
+            if (res.valid) pushSensorHeading(res.deg, { r22: res.r22, w: res.w, abs: true });
+          });
+          sensorInstance.addEventListener('error', ev => {
+            next(ev.error ? ev.error.name : '传感器错误');
+          });
+          sensorInstance.start();
+          watchdogTimer = setTimeout(() => { if (!gotFirstPacket) next('900ms 无数据超时'); }, 900);
+        } catch (e) {
+          next(e.message);
+        }
+        return;
+      }
+
+      if (eng === 'ios_webkit') {
+        oriEventName = 'deviceorientation';
+        oriHandler = e => {
+          if (typeof e.webkitCompassHeading === 'number' && !Number.isNaN(e.webkitCompassHeading)) {
+            pushSensorHeading(e.webkitCompassHeading, {
+              r22: Math.cos((e.beta || 0) * Math.PI / 180),
+              w: 0, a: e.alpha, b: e.beta, g: e.gamma, abs: true, wk: e.webkitCompassHeading
+            });
+          }
+        };
+        window.addEventListener(oriEventName, oriHandler, true);
+        watchdogTimer = setTimeout(() => { if (!gotFirstPacket) next('1000ms 无 webkitCompassHeading'); }, 1000);
+        return;
+      }
+
+      if (eng === 'android_abs_euler' || eng === 'generic_euler') {
+        oriEventName = eng === 'android_abs_euler' ? 'deviceorientationabsolute' : 'deviceorientation';
+        const timeoutMs = eng === 'android_abs_euler' ? 1000 : 1200;
+        oriHandler = e => {
+          if (typeof e.alpha !== 'number' || typeof e.beta !== 'number' || typeof e.gamma !== 'number') return;
+          const res = headingFromEuler(e.alpha, e.beta, e.gamma);
+          if (res.valid) {
+            pushSensorHeading(res.deg, {
+              r22: res.r22, w: res.w, a: e.alpha, b: e.beta, g: e.gamma, abs: e.absolute
+            });
+          }
+        };
+        window.addEventListener(oriEventName, oriHandler, true);
+        watchdogTimer = setTimeout(() => { if (!gotFirstPacket) next(`${timeoutMs}ms 无 ${oriEventName} 数据`); }, timeoutMs);
+      }
+    }
+
+    /* ================= 11. 实景摄像头开关 ================= */
+    let mediaStream = null;
+    async function toggleCamera() {
+      const video = document.getElementById('bgVideo');
+      const btn = document.getElementById('btnCamera');
+      if (state.cameraActive) {
+        if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+        video.srcObject = null;
+        video.classList.remove('active');
+        radarCanvas.classList.remove('dimmed');
+        state.cameraActive = false;
+        btn.classList.remove('active');
+        showToast('已关闭实景摄像头，切回赛博雷达');
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('当前环境不支持摄像头（需 HTTPS）');
+        return;
+      }
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } }, audio: false
+        });
+        video.srcObject = mediaStream;
+        await video.play();
+        video.classList.add('active');
+        radarCanvas.classList.add('dimmed');
+        state.cameraActive = true;
+        btn.classList.add('active');
+        showToast('AR 实景摄像头已开启');
+      } catch (e) {
+        showToast('未获得摄像头权限，已保持雷达背景');
+      }
+    }
+
+    /* ================= 12. 交互事件绑定 ================= */
+    // 模式切换
+    document.querySelectorAll('#modeTabs .mode-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.mode = btn.dataset.mode;
+        try {
+          const u = new URL(location.href);
+          u.searchParams.set('mode', state.mode);
+          history.replaceState(null, '', u.toString());
+        } catch (e) {}
+        syncAllUI();
+      });
+    });
+
+    // 底部宫位浮窗展开/收起/隐藏
+    function syncPillUI() {
+      const dock = document.getElementById('palaceDock');
+      const btnTop = document.getElementById('btnToggleDetails');
+      const btnExp = document.getElementById('btnExpandPill');
+      dock.classList.toggle('hidden', state.pillHidden);
+      dock.classList.toggle('expanded', state.pillExpanded);
+      btnTop.textContent = (!state.pillHidden && state.pillExpanded) ? '收起' : '详情';
+      btnTop.classList.toggle('active', !state.pillHidden && state.pillExpanded);
+      btnExp.textContent = state.pillExpanded ? '收起 ▴' : '展开 ▾';
+    }
+    document.getElementById('btnToggleDetails').addEventListener('click', () => {
+      if (state.pillHidden) { state.pillHidden = false; state.pillExpanded = true; }
+      else { state.pillExpanded = !state.pillExpanded; }
+      syncPillUI();
+    });
+    document.getElementById('palacePill').addEventListener('click', e => {
+      if (e.target.id === 'btnHidePill') return;
+      state.pillExpanded = !state.pillExpanded;
+      syncPillUI();
+    });
+    document.getElementById('btnHidePill').addEventListener('click', () => {
+      state.pillHidden = true;
+      state.pillExpanded = false;
+      syncPillUI();
+    });
+
+    // 摄像头 & 指南针按钮
+    document.getElementById('btnCamera').addEventListener('click', toggleCamera);
+    document.getElementById('btnCompass').addEventListener('click', () => {
+      if (state.sensorLive) {
+        takeoverManual();
+        showToast('已切回手动模拟罗盘');
+      } else {
+        showToast('正在探测真机传感器...');
+        startSensorWaterfall('auto');
+      }
+    });
+
+    // 弹窗开关
+    const openModal = id => document.getElementById(id).classList.add('open');
+    const closeModal = id => document.getElementById(id).classList.remove('open');
+    document.getElementById('btnBazi').addEventListener('click', () => openModal('baziModal'));
+    document.getElementById('btnSensorStatus').addEventListener('click', () => openModal('diagModal'));
+    document.getElementById('btnInfo').addEventListener('click', () => openModal('infoModal'));
+    document.querySelectorAll('[data-close]').forEach(btn => {
+      btn.addEventListener('click', () => closeModal(btn.dataset.close));
+    });
+    document.querySelectorAll('.modal-mask').forEach(mask => {
+      mask.addEventListener('click', e => { if (e.target === mask) mask.classList.remove('open'); });
+    });
+
+    // 拖拽取景框 & 滑块 & 微调（永不锁死）
+    let dragActive = false, dragLastX = 0;
+    const dragLayer = document.getElementById('dragLayer');
+    dragLayer.addEventListener('pointerdown', e => {
+      dragActive = true; dragLastX = e.clientX;
+      takeoverManual();
+      state.targetHeading = null;
+      dragLayer.setPointerCapture(e.pointerId);
+    });
+    dragLayer.addEventListener('pointermove', e => {
+      if (!dragActive) return;
+      const dx = e.clientX - dragLastX;
+      dragLastX = e.clientX;
+      state.heading = norm360(state.heading - dx * 0.35);
+    });
+    dragLayer.addEventListener('pointerup', () => { dragActive = false; });
+    dragLayer.addEventListener('pointercancel', () => { dragActive = false; });
+
+    document.getElementById('headingSlider').addEventListener('input', e => {
+      takeoverManual();
+      state.targetHeading = null;
+      state.heading = norm360(Number(e.target.value));
+    });
+    document.getElementById('btnMinus5').addEventListener('click', () => {
+      takeoverManual();
+      state.targetHeading = norm360((state.targetHeading ?? state.heading) - 5);
+    });
+    document.getElementById('btnPlus5').addEventListener('click', () => {
+      takeoverManual();
+      state.targetHeading = norm360((state.targetHeading ?? state.heading) + 5);
+    });
+
+    // 八字弹窗控件
+    document.getElementById('inpDate').addEventListener('change', e => { state.dateStr = e.target.value; syncAllUI(); });
+    document.getElementById('inpTime').addEventListener('change', e => { state.timeStr = e.target.value; syncAllUI(); });
+
+    function bindSeg(groupId, prop, cb) {
+      const grp = document.getElementById(groupId);
+      grp.querySelectorAll('.seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          grp.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          state[prop] = btn.dataset.val;
+          if (cb) cb();
+          syncAllUI();
+        });
+      });
+    }
+    bindSeg('inputModeGroup', 'inputMode', () => {
+      document.getElementById('birthInputs').style.display = state.inputMode === 'birth' ? 'block' : 'none';
+      document.getElementById('stemInputs').style.display = state.inputMode === 'stem' ? 'block' : 'none';
+    });
+    bindSeg('basisGroup', 'basis');
+    bindSeg('guirenRuleGroup', 'guirenRule');
+    bindSeg('rangeModeGroup', 'rangeMode');
+
+    // 隐私十天干网格
+    const stemGrid = document.getElementById('stemGrid');
+    stemGrid.innerHTML = STEMS.map(s => `<button class="seg-btn ${s===state.manualStem?'active':''}" data-stem="${s}" type="button">${s}</button>`).join('');
+    stemGrid.querySelectorAll('[data-stem]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        stemGrid.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.manualStem = btn.dataset.stem;
+        syncAllUI();
+      });
+    });
+
+    // 诊断面板控件
+    document.getElementById('offsetSlider').addEventListener('input', e => {
+      state.magneticOffset = Number(e.target.value);
+      document.getElementById('offsetVal').textContent = `${state.magneticOffset >= 0 ? '+' : ''}${state.magneticOffset.toFixed(1)}°`;
+    });
+    document.querySelectorAll('#forceEngineGroup [data-eng]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const eng = btn.dataset.eng;
+        showToast(`正在测试通道：${btn.textContent}`);
+        startSensorWaterfall(eng);
+      });
+    });
+
+    // lunar-javascript 异步加载完成后静默升级排盘
+    window.__onLunarReady = () => {
+      addLog('lunar-javascript 加载完成，已切换精确节气排盘');
+      syncAllUI();
+    };
+
+    /* ================= 13. 主渲染循环 ================= */
+    let lastDiagPaint = 0;
+    function tick(t) {
+      if (state.targetHeading !== null && !state.sensorLive) {
+        const d = shortestDelta(state.heading, state.targetHeading);
+        if (Math.abs(d) < 0.15) {
+          state.heading = state.targetHeading;
+          state.targetHeading = null;
+        } else {
+          state.heading = norm360(state.heading + d * 0.16);
+        }
+      }
+
+      drawRadar(t);
+      renderFrame();
+
+      // 每 250ms 刷新一次诊断数值
+      if (t - lastDiagPaint > 250) {
+        lastDiagPaint = t;
+        const now = performance.now();
+        while (packetTimes.length && now - packetTimes[0] > 1000) packetTimes.shift();
+        document.getElementById('diagHz').textContent = state.sensorLive ? `${packetTimes.length.toFixed(1)} Hz` : '0.0 Hz (模拟)';
+        document.getElementById('diagPose').textContent = `${lastRawInfo.r22.toFixed(2)} / 竖屏${Math.round(lastRawInfo.w * 100)}%`;
+        document.getElementById('diagAngles').textContent = `${lastRawInfo.rawDeg.toFixed(1)}° / ${state.heading.toFixed(1)}°`;
+        const f = v => (typeof v === 'number' ? v.toFixed(0) : '-');
+        document.getElementById('diagRaw').textContent = `${f(lastRawInfo.a)} / ${f(lastRawInfo.b)} / ${f(lastRawInfo.g)} / ${lastRawInfo.abs === null ? '-' : lastRawInfo.abs}`;
+      }
+      requestAnimationFrame(tick);
+    }
+
+    /* ================= 14. 启动初始化 ================= */
+    window.addEventListener('resize', resizeCanvases);
+    if (!window.isSecureContext) {
+      document.getElementById('httpsBanner').classList.add('show');
+    }
+    resizeCanvases();
+    syncPillUI();
+    syncAllUI();
+    // 启动时默认指向首个目标宫位
+    if (state.targets.length > 0) state.heading = state.targets[0].mid;
+    requestAnimationFrame(tick);
+  })();
+  </script>
+</body>
+</html>
