@@ -1,0 +1,3283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>天乙贵人 AR 实景罗盘 · 十二地支×二十四山双层穿插版</title>
+  <!-- Async non-blocking lunar-javascript CDN (instant boot via built-in exact BaZi engine) -->
+  <script async src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.12/lunar.js" onload="window.__onLunarLoaded && window.__onLunarLoaded()"></script>
+
+  <style>
+    /* =========================================================================
+       CYBER-ZEN DESIGN TOKENS & BASE RESET (ZERO EXTERNAL CSS / FONT CDNS)
+       ========================================================================= */
+    :root {
+      --bg-obsidian: #07090F;
+      --bg-deep: #0C111E;
+      --surface-glass: rgba(13, 18, 30, 0.80);
+      --surface-dark: rgba(7, 10, 17, 0.88);
+      --border-subtle: rgba(255, 255, 255, 0.11);
+      --border-gold: rgba(212, 175, 55, 0.36);
+
+      --gold: #D4AF37;
+      --gold-bright: #F5D061;
+      --gold-pale: #FEF08A;
+      --gold-dark: #8C6D14;
+
+      --amber: #F59E0B;
+      --amber-light: #FCD34D;
+
+      --jade: #2DD4BF;
+      --jade-light: #5EEAD4;
+      --jade-pale: #CCFBF1;
+      --jade-dark: #0F766E;
+
+      --crimson: #EF4444;
+      --crimson-light: #FCA5A5;
+
+      --text-main: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --text-dim: #6B7280;
+
+      --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-serif: "Songti SC", "STSong", "Noto Serif SC", "SimSun", Georgia, serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background-color: var(--bg-obsidian);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      user-select: none;
+      -webkit-user-select: none;
+      overscroll-behavior: none;
+    }
+
+    button, input, select {
+      font-family: inherit;
+      color: inherit;
+      outline: none;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      padding: 0;
+    }
+
+    .font-serif { font-family: var(--font-serif); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    .hidden { display: none !important; }
+
+    /* =========================================================================
+       STRICT 4-LAYER Z-INDEX & POINTER-EVENTS ISOLATION
+       Layer 0 (z: 1-2) : Full-screen Camera Video + Cyber-Zen Radar Canvas (pointer-events: none)
+       Layer 1 (z: 10)  : AR HUD Canvas (Light Pillars, 4-Corner Lines) + Reticle (pointer-events: none)
+       Layer 2 (z: 20)  : Transparent Swipe/Drag Gesture Surface (pointer-events: auto, touch-action: none)
+       Layer 3 (z: 30)  : Interactive Controls Shell (wrapper none, actual controls auto)
+       Layer 4 (z: 50)  : Settings Drawer & Reference Legend Modal
+       Layer 5 (z: 60)  : Non-blocking Toast Stack (pointer-events: none)
+       ========================================================================= */
+
+    /* Layer 0: Camera Video & Cyber-Zen Starry Radar Fallback */
+    #cameraVideo {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 1;
+      opacity: 0;
+      transition: opacity 0.45s ease;
+      pointer-events: none;
+    }
+    #cameraVideo.active { opacity: 1; }
+
+    #bgRadarCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+      display: block;
+    }
+
+    /* Layer 1: Fullscreen AR HUD Projections & Center Reticle */
+    #arHudLayer {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    #arHudCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+    }
+
+    .ar-reticle {
+      position: fixed;
+      left: 50%;
+      top: 42%;
+      transform: translate(-50%, -50%);
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(245, 208, 97, 0.44);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+      pointer-events: none;
+    }
+    .ar-reticle::before, .ar-reticle::after {
+      content: "";
+      position: absolute;
+      background: rgba(245, 208, 97, 0.58);
+    }
+    .ar-reticle::before { width: 1.5px; height: 12px; top: -8px; left: 50%; transform: translateX(-50%); background: var(--crimson); }
+    .ar-reticle::after  { width: 1.5px; height: 10px; bottom: -7px; left: 50%; transform: translateX(-50%); }
+    .ar-reticle-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--crimson);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.95);
+    }
+
+    @keyframes pulseGoldRing {
+      0%, 100% { box-shadow: 0 0 18px rgba(245, 208, 97, 0.55), inset 0 0 10px rgba(245, 208, 97, 0.22); }
+      50% { box-shadow: 0 0 32px rgba(245, 208, 97, 0.88), inset 0 0 16px rgba(245, 208, 97, 0.36); }
+    }
+    @keyframes pulseJadeRing {
+      0%, 100% { box-shadow: 0 0 18px rgba(45, 212, 191, 0.55), inset 0 0 10px rgba(45, 212, 191, 0.22); }
+      50% { box-shadow: 0 0 32px rgba(45, 212, 191, 0.88), inset 0 0 16px rgba(45, 212, 191, 0.36); }
+    }
+
+    .ar-reticle.state-core-gold {
+      width: 62px; height: 62px;
+      border-color: var(--gold-bright);
+      border-width: 2px;
+      animation: pulseGoldRing 2.1s ease-in-out infinite;
+    }
+    .ar-reticle.state-core-jade {
+      width: 62px; height: 62px;
+      border-color: var(--jade-light);
+      border-width: 2px;
+      animation: pulseJadeRing 2.1s ease-in-out infinite;
+    }
+    .ar-reticle.state-wing {
+      border-color: var(--amber);
+      border-width: 2px;
+      box-shadow: 0 0 18px rgba(245, 158, 11, 0.58);
+    }
+    .ar-reticle.state-corner {
+      border-color: var(--crimson);
+      border-width: 2px;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.65);
+    }
+
+    /* Layer 2: Transparent Swipe/Drag Surface */
+    #dragViewport {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      pointer-events: auto;
+      touch-action: none;
+      cursor: grab;
+    }
+    #dragViewport:active { cursor: grabbing; }
+
+    /* Layer 3: Interactive UI Shell (pointer-events: none on shell, auto on controls only) */
+    #uiShell {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: max(8px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px;
+      gap: 6px;
+    }
+
+    /* Reusable Cyber-Zen Frosted Surfaces */
+    .glass-panel {
+      background: linear-gradient(145deg, rgba(16, 22, 36, 0.84), rgba(7, 10, 18, 0.90));
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border-gold);
+      border-radius: 16px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    .glass-pill {
+      background: rgba(11, 15, 26, 0.76);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+    }
+
+    /* =========================================================================
+       TOP SECTION: HEADER BAR, TARGET PILLS & AR HORIZON RULER
+       ========================================================================= */
+    .top-stack {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      pointer-events: none;
+    }
+
+    .top-bar {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 6px 9px;
+    }
+
+    .brand-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      text-align: left;
+      flex: 1;
+    }
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(245, 208, 97, 0.25), rgba(140, 109, 20, 0.14));
+      border: 1px solid rgba(245, 208, 97, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--gold-bright);
+    }
+    .brand-text {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .brand-title-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .brand-title {
+      font-family: var(--font-serif);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mode-badge {
+      font-size: 9.5px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(245, 208, 97, 0.45);
+      background: rgba(212, 175, 55, 0.16);
+      color: var(--gold-pale);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .mode-badge.sensor-live {
+      border-color: rgba(45, 212, 191, 0.65);
+      background: rgba(45, 212, 191, 0.18);
+      color: var(--jade-pale);
+    }
+    .brand-sub {
+      font-size: 10.5px;
+      color: #D1D5DB;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      height: 32px;
+      padding: 0 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      color: var(--text-main);
+      font-size: 11px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: transform 0.12s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+    }
+    .icon-btn:active { transform: scale(0.94); }
+    .icon-btn:hover { border-color: rgba(245, 208, 97, 0.55); }
+    .icon-btn.primary {
+      background: rgba(212, 175, 55, 0.18);
+      border-color: rgba(245, 208, 97, 0.58);
+      color: var(--gold-bright);
+    }
+    .icon-btn.active-jade {
+      background: rgba(45, 212, 191, 0.20);
+      border-color: rgba(94, 234, 212, 0.72);
+      color: var(--jade-pale);
+    }
+    .icon-btn.active-gold {
+      background: rgba(245, 208, 97, 0.24);
+      border-color: var(--gold-bright);
+      color: var(--gold-pale);
+      box-shadow: 0 0 12px rgba(245, 208, 97, 0.22);
+    }
+    .icon-btn.square {
+      width: 32px;
+      padding: 0;
+    }
+    .btn-label-sm { display: none; }
+    .btn-label-always { display: inline; font-size: 10.5px; }
+    @media (min-width: 520px) {
+      .btn-label-sm { display: inline; }
+    }
+
+    /* Target Nobleman Quick-Jump Pills Row */
+    .pills-bar {
+      pointer-events: auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .noble-pill {
+      padding: 3.5px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: transform 0.12s ease, box-shadow 0.2s ease;
+    }
+    .noble-pill:active { transform: scale(0.94); }
+    .noble-pill.gold {
+      background: linear-gradient(135deg, rgba(245, 208, 97, 0.24), rgba(140, 109, 20, 0.16));
+      border: 1px solid rgba(245, 208, 97, 0.72);
+      color: var(--gold-pale);
+    }
+    .noble-pill.jade {
+      background: linear-gradient(135deg, rgba(45, 212, 191, 0.24), rgba(15, 118, 110, 0.16));
+      border: 1px solid rgba(94, 234, 212, 0.72);
+      color: var(--jade-pale);
+    }
+    .noble-pill.focused {
+      box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.65), 0 0 14px rgba(245, 208, 97, 0.35);
+    }
+
+    .test-jump-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding-left: 5px;
+      border-left: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .test-pill {
+      padding: 3.5px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 500;
+      background: rgba(11, 15, 26, 0.78);
+      transition: transform 0.12s ease, background 0.2s ease;
+    }
+    .test-pill:active { transform: scale(0.94); }
+    .test-pill.gold    { border: 1px solid rgba(245, 208, 97, 0.65); color: var(--gold-pale); }
+    .test-pill.gold:hover { background: rgba(245, 208, 97, 0.20); }
+    .test-pill.amber   { border: 1px solid rgba(245, 158, 11, 0.62); color: var(--amber-light); }
+    .test-pill.amber:hover { background: rgba(245, 158, 11, 0.20); }
+    .test-pill.crimson { border: 1px solid rgba(239, 68, 68, 0.62); color: var(--crimson-light); }
+    .test-pill.crimson:hover { background: rgba(239, 68, 68, 0.20); }
+
+    /* Top AR Horizon Azimuth Ruler */
+    .horizon-wrap {
+      position: relative;
+      height: 48px;
+      border-radius: 13px;
+      overflow: hidden;
+      background: rgba(9, 13, 22, 0.72);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(212, 175, 55, 0.30);
+      pointer-events: none;
+    }
+    #horizonCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .horizon-pointer {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 7px solid var(--crimson);
+      filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.9));
+    }
+    .horizon-centerline {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 1.5px;
+      transform: translateX(-50%);
+      background: linear-gradient(to bottom, rgba(239, 68, 68, 0.9), rgba(239, 68, 68, 0.14));
+    }
+
+    /* =========================================================================
+       MIDDLE SECTION: UNOBSTRUCTED AR VIEWPORT + TOGGLEABLE PALACE DOCK
+       ========================================================================= */
+    .mid-stack {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      padding-bottom: 2px;
+      pointer-events: none;
+    }
+
+    .guide-pill {
+      padding: 4px 13px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--gold-bright);
+      border: 1px solid rgba(212, 175, 55, 0.46);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+      text-align: center;
+      max-width: 92vw;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .guide-pill.wing-cue {
+      border-color: rgba(245, 158, 11, 0.72);
+      color: var(--amber-light);
+      background: rgba(30, 19, 6, 0.80);
+    }
+
+    .corner-alert {
+      max-width: 440px;
+      width: 100%;
+      padding: 5px 12px;
+      border-radius: 11px;
+      background: rgba(127, 29, 29, 0.80);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(239, 68, 68, 0.85);
+      color: #FEE2E2;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+    }
+
+    /* TOGGLEABLE PALACE DESCRIPTION PANEL (COMPACT 1-LINE PILL <-> EXPANDED CARD <-> HIDDEN) */
+    .palace-dock {
+      pointer-events: auto;
+      width: 100%;
+      max-width: 470px;
+      overflow: hidden;
+      border-radius: 15px;
+      background: linear-gradient(145deg, rgba(15, 21, 34, 0.84), rgba(7, 10, 18, 0.90));
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(212, 175, 55, 0.36);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.56), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease,
+                  opacity 0.26s ease, transform 0.26s ease, max-height 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+      max-height: 320px;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Pure AR Hidden Mode: completely out of the way */
+    .palace-dock.mode-hidden {
+      max-height: 0;
+      opacity: 0;
+      transform: translateY(10px);
+      border-width: 0;
+      pointer-events: none;
+      margin: 0;
+      box-shadow: none;
+    }
+
+    /* Compact 1-Line Mode: ultra-slim pill shape */
+    .palace-dock.mode-compact {
+      border-radius: 999px;
+      max-width: 440px;
+    }
+
+    /* State-driven color themes */
+    .palace-dock.state-core-gold {
+      background: linear-gradient(135deg, rgba(44, 34, 10, 0.88), rgba(14, 12, 8, 0.92));
+      border-color: rgba(245, 208, 97, 0.85);
+      box-shadow: 0 0 24px rgba(245, 208, 97, 0.30), inset 0 0 12px rgba(245, 208, 97, 0.14);
+    }
+    .palace-dock.state-core-jade {
+      background: linear-gradient(135deg, rgba(9, 44, 42, 0.88), rgba(7, 16, 19, 0.92));
+      border-color: rgba(94, 234, 212, 0.85);
+      box-shadow: 0 0 24px rgba(45, 212, 191, 0.28), inset 0 0 12px rgba(45, 212, 191, 0.14);
+    }
+    .palace-dock.state-wing {
+      background: linear-gradient(135deg, rgba(44, 26, 7, 0.88), rgba(16, 12, 8, 0.92));
+      border-color: rgba(245, 158, 11, 0.84);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.26);
+    }
+    .palace-dock.state-corner {
+      background: linear-gradient(135deg, rgba(58, 14, 18, 0.88), rgba(18, 8, 10, 0.92));
+      border-color: rgba(239, 68, 68, 0.86);
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.30);
+    }
+
+    /* Always-visible Clickable Header Bar (doubles as the 1-line Compact Pill) */
+    .palace-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 7px 10px 7px 12px;
+      cursor: pointer;
+    }
+
+    .palace-header-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .status-dot.gold    { background: var(--gold-bright); box-shadow: 0 0 10px var(--gold-bright); }
+    .status-dot.jade    { background: var(--jade-light);  box-shadow: 0 0 10px var(--jade-light); }
+    .status-dot.amber   { background: var(--amber-light); box-shadow: 0 0 10px var(--amber); }
+    .status-dot.crimson { background: var(--crimson);     box-shadow: 0 0 10px var(--crimson); }
+
+    .palace-brief {
+      margin: 0;
+      font-family: var(--font-serif);
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .palace-header-right {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+
+    .palace-deg-chip {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--gold-pale);
+      white-space: nowrap;
+    }
+
+    .palace-toggle-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(212, 175, 55, 0.18);
+      border: 1px solid rgba(245, 208, 97, 0.50);
+      color: var(--gold-pale);
+      font-size: 10.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.18s ease, transform 0.12s ease;
+    }
+    .palace-toggle-chip:hover { background: rgba(212, 175, 55, 0.30); }
+    .palace-toggle-chip:active { transform: scale(0.94); }
+
+    .palace-dismiss-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.18s ease, color 0.18s ease;
+    }
+    .palace-dismiss-btn:hover { background: rgba(239, 68, 68, 0.25); color: #FEE2E2; border-color: rgba(239, 68, 68, 0.55); }
+
+    /* Smooth Collapsible Details Body (CSS max-height + opacity transition) */
+    .palace-body {
+      max-height: 260px;
+      opacity: 1;
+      overflow: hidden;
+      padding: 0 12px 11px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      transition: max-height 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                  opacity 0.24s ease,
+                  padding 0.28s ease,
+                  border-color 0.24s ease;
+    }
+    .palace-dock.mode-compact .palace-body {
+      max-height: 0;
+      opacity: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      border-top-color: transparent;
+      pointer-events: none;
+    }
+
+    .palace-delta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+    .delta-pill {
+      font-weight: 600;
+      color: var(--gold-bright);
+    }
+    .branch-meta-text {
+      color: #D1D5DB;
+      font-size: 10.5px;
+      text-align: right;
+    }
+
+    /* Visual 3-Part Interlocking Bar: Left Half-Mountain (7.5°) + Core (15°) + Right Half-Mountain (7.5°) */
+    .overlap-bar {
+      display: grid;
+      grid-template-columns: 1fr 1.65fr 1fr;
+      gap: 4px;
+      margin-top: 7px;
+    }
+    .overlap-seg {
+      padding: 4px 5px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      text-align: center;
+      font-size: 10px;
+      color: var(--text-muted);
+      transition: all 0.2s ease;
+    }
+    .overlap-seg b {
+      display: block;
+      font-family: var(--font-serif);
+      font-size: 11px;
+      color: #D1D5DB;
+      font-weight: 600;
+    }
+    .overlap-seg.active-core-gold {
+      background: rgba(245, 208, 97, 0.22);
+      border-color: var(--gold-bright);
+      color: var(--gold-pale);
+    }
+    .overlap-seg.active-core-gold b { color: #FFFFFF; }
+    .overlap-seg.active-core-jade {
+      background: rgba(45, 212, 191, 0.22);
+      border-color: var(--jade-light);
+      color: var(--jade-pale);
+    }
+    .overlap-seg.active-core-jade b { color: #FFFFFF; }
+    .overlap-seg.active-wing {
+      background: rgba(245, 158, 11, 0.22);
+      border-color: var(--amber);
+      color: var(--amber-light);
+    }
+    .overlap-seg.active-wing b { color: #FEF3C7; }
+    .overlap-seg.active-scan {
+      background: rgba(255, 255, 255, 0.11);
+      border-color: rgba(255, 255, 255, 0.34);
+      color: #F3F4F6;
+    }
+    .overlap-seg.active-scan b { color: #FFFFFF; }
+
+    .palace-desc {
+      margin: 7px 0 0 0;
+      font-size: 11.2px;
+      line-height: 1.5;
+      color: #E5E7EB;
+    }
+
+    /* =========================================================================
+       BOTTOM SECTION: DUAL-RING SVG LUOPAN + FINE-TUNE + 0°-360° SLIDER
+       ========================================================================= */
+    .bottom-stack {
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    .luopan-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .luopan-frame {
+      position: relative;
+      width: 210px;
+      height: 210px;
+      border-radius: 50%;
+      background: rgba(7, 10, 18, 0.86);
+      border: 1.5px solid rgba(212, 175, 55, 0.52);
+      box-shadow: 0 0 36px rgba(0, 0, 0, 0.85), inset 0 0 22px rgba(212, 175, 55, 0.08);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    @media (min-height: 760px) and (min-width: 400px) {
+      .luopan-frame { width: 238px; height: 238px; }
+    }
+
+    #dualLuopanSvg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      will-change: transform;
+    }
+    .luopan-overlay-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .luopan-hub-readout {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      text-align: center;
+    }
+    .hub-deg {
+      font-size: 17.5px;
+      font-weight: 700;
+      line-height: 1;
+      color: #FFFFFF;
+    }
+    .hub-deg span {
+      font-size: 11.5px;
+      color: var(--gold-bright);
+    }
+    .hub-mtn {
+      margin-top: 2px;
+      font-family: var(--font-serif);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      line-height: 1.15;
+    }
+    .hub-sub {
+      margin-top: 1px;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    .side-nudge-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: rgba(13, 18, 30, 0.84);
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      color: var(--gold-bright);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+      transition: transform 0.1s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+    .side-nudge-btn:hover { border-color: var(--gold-bright); background: rgba(212, 175, 55, 0.16); }
+    .side-nudge-btn:active { transform: scale(0.92); }
+    .side-nudge-btn span { font-size: 9px; color: var(--text-muted); font-weight: 400; }
+
+    /* Control Deck: Slider + Live Sensor Toggle Bar */
+    .control-deck {
+      pointer-events: auto;
+      width: 100%;
+      padding: 7px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .slider-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--gold-bright);
+      white-space: nowrap;
+    }
+    .slider-val {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #E5E7EB;
+      width: 44px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    input[type="range"].cyber-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(212, 175, 55, 0.22), rgba(245, 208, 97, 0.58), rgba(212, 175, 55, 0.22));
+      cursor: pointer;
+    }
+    input[type="range"].cyber-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #FFFBEB, #F5D061 55%, #9A7B1C);
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 0 12px rgba(245, 208, 97, 0.85);
+    }
+    input[type="range"].cyber-slider::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #FFFBEB, #F5D061 55%, #9A7B1C);
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 0 12px rgba(245, 208, 97, 0.85);
+    }
+
+    .sensor-live-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11.5px;
+      color: var(--jade-pale);
+    }
+    .sensor-live-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--jade);
+      box-shadow: 0 0 10px var(--jade);
+      flex-shrink: 0;
+    }
+    .mini-btn {
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      font-size: 11px;
+      color: #F3F4F6;
+      white-space: nowrap;
+    }
+
+    /* =========================================================================
+       LAYER 4: SETTINGS DRAWER & 12×24 REFERENCE MODAL
+       ========================================================================= */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.74);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 0;
+    }
+    @media (min-width: 640px) {
+      .modal-backdrop { align-items: center; padding: 16px; }
+    }
+
+    .modal-sheet {
+      width: 100%;
+      max-width: 540px;
+      max-height: 90dvh;
+      display: flex;
+      flex-direction: column;
+      border-radius: 22px 22px 0 0;
+      overflow: hidden;
+    }
+    @media (min-width: 640px) {
+      .modal-sheet { border-radius: 22px; }
+    }
+    .modal-sheet.wide { max-width: 680px; }
+
+    .modal-header {
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .modal-title {
+      margin: 0;
+      font-family: var(--font-serif);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--gold-bright);
+    }
+    .modal-sub {
+      margin: 2px 0 0;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .close-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      color: #D1D5DB;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .close-btn:hover { background: rgba(255, 255, 255, 0.16); color: #FFFFFF; }
+
+    .modal-body {
+      padding: 14px 18px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .modal-footer {
+      padding: 12px 18px max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid rgba(255, 255, 255, 0.10);
+      flex-shrink: 0;
+    }
+
+    /* Drawer Form Elements */
+    .seg-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 4px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+    .seg-btn {
+      padding: 8px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all 0.18s ease;
+    }
+    .seg-btn.active {
+      background: rgba(212, 175, 55, 0.24);
+      border: 1px solid rgba(245, 208, 97, 0.65);
+      color: var(--gold-bright);
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    @media (min-width: 440px) {
+      .field-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .field-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: #D1D5DB;
+      margin-bottom: 5px;
+    }
+    .cyber-input {
+      width: 100%;
+      padding: 8px 11px;
+      border-radius: 11px;
+      background: rgba(0, 0, 0, 0.52);
+      border: 1px solid rgba(212, 175, 55, 0.36);
+      color: #FFFFFF;
+      font-size: 13px;
+      color-scheme: dark;
+    }
+    .cyber-input:focus { border-color: var(--gold-bright); }
+    .cyber-input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .checkbox-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--gold-bright);
+      cursor: pointer;
+    }
+
+    /* Four Pillars Box */
+    .pillars-box {
+      border-radius: 14px;
+      background: rgba(0, 0, 0, 0.42);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      padding: 10px;
+    }
+    .pillars-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+      text-align: center;
+    }
+    .pillar-cell {
+      border-radius: 11px;
+      padding: 7px 4px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+    }
+    .pillar-cell.day-master {
+      background: rgba(212, 175, 55, 0.14);
+      border-color: rgba(245, 208, 97, 0.72);
+    }
+    .pillar-cell.year-master {
+      background: rgba(45, 212, 191, 0.10);
+      border-color: rgba(45, 212, 191, 0.48);
+    }
+    .pillar-lbl { font-size: 10px; color: var(--text-muted); }
+    .pillar-gan { font-family: var(--font-serif); font-size: 20px; font-weight: 700; margin-top: 2px; }
+    .pillar-zhi { font-family: var(--font-serif); font-size: 14px; color: #D1D5DB; }
+
+    /* 10 Stems Quick Picker */
+    .stems-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 7px;
+    }
+    .stem-btn {
+      padding: 8px 4px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.15s ease;
+    }
+    .stem-btn:active { transform: scale(0.94); }
+    .stem-btn.active {
+      background: rgba(212, 175, 55, 0.25);
+      border-color: var(--gold-bright);
+      box-shadow: 0 0 12px rgba(245, 208, 97, 0.28);
+    }
+    .stem-char { font-family: var(--font-serif); font-size: 18px; font-weight: 700; color: #FFFFFF; }
+    .stem-wx { font-size: 10px; color: var(--text-muted); }
+
+    /* Choice Cards */
+    .section-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #D1D5DB;
+      margin-bottom: 6px;
+    }
+    .choice-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .choice-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .choice-btn {
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      text-align: left;
+      transition: all 0.15s ease;
+    }
+    .choice-btn.center { text-align: center; }
+    .choice-btn.active {
+      background: rgba(212, 175, 55, 0.18);
+      border-color: rgba(245, 208, 97, 0.78);
+      color: var(--gold-bright);
+    }
+    .choice-title { font-size: 12px; font-weight: 600; }
+    .choice-desc { font-size: 10px; color: var(--text-muted); margin-top: 2px; line-height: 1.35; }
+    .choice-btn.active .choice-desc { color: #FDE68A; opacity: 0.88; }
+
+    /* Preview Box in Drawer */
+    .preview-box {
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(212, 175, 55, 0.14), rgba(0, 0, 0, 0.45));
+      border: 1px solid rgba(212, 175, 55, 0.34);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .preview-item {
+      padding: 7px 9px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.42);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      font-size: 11px;
+    }
+
+    .cta-btn {
+      width: 100%;
+      padding: 11px;
+      border-radius: 12px;
+      background: linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-bright));
+      color: #07090F;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      box-shadow: 0 0 20px rgba(245, 208, 97, 0.36);
+      transition: transform 0.12s ease;
+    }
+    .cta-btn:active { transform: scale(0.98); }
+
+    /* Reference Table */
+    .ref-table-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background: rgba(0, 0, 0, 0.40);
+    }
+    table.ref-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      text-align: left;
+    }
+    table.ref-table th {
+      padding: 7px 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--gold-bright);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+      white-space: nowrap;
+    }
+    table.ref-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #D1D5DB;
+    }
+
+    /* Layer 5: Toast Stack */
+    #toastStack {
+      position: fixed;
+      top: 62px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 60;
+      pointer-events: none;
+      width: 92vw;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .toast-item {
+      padding: 8px 14px;
+      border-radius: 12px;
+      background: rgba(11, 15, 26, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(245, 208, 97, 0.65);
+      color: var(--gold-pale);
+      font-size: 11.5px;
+      line-height: 1.4;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .toast-item.show { opacity: 1; transform: translateY(0); }
+    .toast-item.tone-jade    { border-color: rgba(45, 212, 191, 0.72); color: var(--jade-pale); }
+    .toast-item.tone-amber   { border-color: rgba(245, 158, 11, 0.75); color: var(--amber-light); }
+    .toast-item.tone-crimson { border-color: rgba(239, 68, 68, 0.80);  color: #FEE2E2; }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== LAYER 0: CAMERA VIDEO + CYBER-ZEN RADAR FALLBACK ==================== -->
+  <video id="cameraVideo" playsinline autoplay muted></video>
+  <canvas id="bgRadarCanvas"></canvas>
+
+  <!-- ==================== LAYER 1: AR HUD PROJECTIONS & RETICLE ==================== -->
+  <div id="arHudLayer">
+    <canvas id="arHudCanvas"></canvas>
+    <div id="arReticle" class="ar-reticle">
+      <div class="ar-reticle-dot"></div>
+    </div>
+  </div>
+
+  <!-- ==================== LAYER 2: TRANSPARENT SWIPE/DRAG GESTURE SURFACE ==================== -->
+  <div id="dragViewport" aria-label="在屏幕左右拖动可旋转模拟罗盘"></div>
+
+  <!-- ==================== LAYER 3: INTERACTIVE CONTROLS SHELL ==================== -->
+  <div id="uiShell">
+
+    <!-- TOP HUD: COMPACT BAR + NOBLEMAN TARGET PILLS + AR HORIZON RULER -->
+    <header class="top-stack">
+      <div class="glass-panel top-bar">
+        <button id="btnOpenSetupBrand" type="button" class="brand-btn" title="点击打开八字排盘与口诀设置">
+          <div class="brand-icon">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <circle cx="12" cy="12" r="9.5" />
+              <circle cx="12" cy="12" r="5" stroke-dasharray="2.5 2.5" opacity="0.7" />
+              <polygon points="12,3 14,10.5 12,12 10,10.5" fill="currentColor" />
+              <polygon points="12,21 10,13.5 12,12 14,13.5" fill="currentColor" opacity="0.4" />
+            </svg>
+          </div>
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <span class="brand-title">天乙贵人 · 双层AR罗盘</span>
+              <span id="sensorModePill" class="mode-badge">模拟</span>
+            </div>
+            <div id="headerBaziText" class="brand-sub">载入八字排盘中...</div>
+          </div>
+        </button>
+
+        <div class="top-actions">
+          <!-- Dedicated One-Tap Palace Description Panel Toggle Button -->
+          <button id="btnTogglePanel" type="button" class="icon-btn" title="展开或隐藏宫位风水说明面板">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+              <rect x="3" y="4" width="18" height="16" rx="2.5" />
+              <line x1="7" y1="9" x2="17" y2="9" stroke-linecap="round" />
+              <line x1="7" y1="13" x2="13" y2="13" stroke-linecap="round" />
+            </svg>
+            <span id="btnTogglePanelLabel" class="btn-label-always">详情</span>
+          </button>
+
+          <button id="btnCamera" type="button" class="icon-btn" title="开启或关闭后置实景摄像头">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+            <span id="btnCameraLabel" class="btn-label-sm">实景</span>
+          </button>
+
+          <button id="btnSensor" type="button" class="icon-btn" title="开启或关闭真机指南针传感器">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="9" />
+              <polygon points="16.24,7.76 14.12,14.12 7.76,16.24 9.88,9.88" />
+            </svg>
+            <span id="btnSensorLabel" class="btn-label-sm">指南针</span>
+          </button>
+
+          <button id="btnOpenSetup" type="button" class="icon-btn primary square" title="八字与贵人口诀设置">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+              <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+              <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+              <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+            </svg>
+          </button>
+
+          <button id="btnOpenLegend" type="button" class="icon-btn square" title="十二地支穿插二十四山图谱与口诀">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="9.5" />
+              <path d="M12 16v-4" stroke-linecap="round" />
+              <circle cx="12" cy="8.2" r="1.1" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Clickable Nobleman Target Pills + Quick Test Jumps (0° / +10° / 4-Corner) -->
+      <div class="pills-bar">
+        <div id="noblePillsContainer" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;"></div>
+        <div class="test-jump-group">
+          <button id="btnJumpCore" type="button" class="test-pill gold" title="平滑转向当前焦点贵人核心本山 (0°)">核心 0°</button>
+          <button id="btnJumpWing" type="button" class="test-pill amber" title="平滑转向当前贵人穿插余气翼区 (+10°)">余气 +10°</button>
+          <button id="btnJumpCorner" type="button" class="test-pill crimson" title="平滑转向四维中线交界预览杂气警示">四维界</button>
+        </div>
+      </div>
+
+      <!-- Top Scrolling AR Horizon Azimuth Ruler -->
+      <div class="horizon-wrap">
+        <canvas id="horizonCanvas"></canvas>
+        <div class="horizon-pointer"></div>
+        <div class="horizon-centerline"></div>
+      </div>
+    </header>
+
+    <!-- MIDDLE HUD: CLEAR AR VIEWPORT + TOGGLEABLE PALACE DESCRIPTION DOCK -->
+    <main class="mid-stack">
+      <div id="guidePill" class="glass-pill guide-pill">正在计算贵人方位...</div>
+      <div id="cornerAlert" class="corner-alert hidden">⚠ 逼近四维中线，易生跨山杂气，建议避开交界线</div>
+
+      <!-- Toggleable Palace Info Panel: starts in ultra-slim 'mode-compact' pill -->
+      <section id="palaceDock" class="palace-dock mode-compact" aria-live="polite">
+        <div id="palaceHeader" class="palace-header" role="button" tabindex="0" aria-expanded="false" title="点击展开或收起宫位详细风水说明">
+          <div class="palace-header-left">
+            <span id="statusDot" class="status-dot"></span>
+            <h2 id="palaceBrief" class="palace-brief">双层罗盘就绪</h2>
+          </div>
+          <div class="palace-header-right">
+            <span id="palaceDegChip" class="palace-deg-chip tabular">030.0°</span>
+            <span id="palaceToggleChip" class="palace-toggle-chip">展开 ▾</span>
+            <button id="btnDismissPanel" type="button" class="palace-dismiss-btn" title="完全隐藏浮窗以获得纯净实景视野" aria-label="完全隐藏浮窗">&times;</button>
+          </div>
+        </div>
+
+        <div id="palaceBody" class="palace-body">
+          <div class="palace-delta-row">
+            <span id="palaceDeltaText" class="delta-pill tabular">已归中 · 偏心 0.0°</span>
+            <span id="palaceBranchMeta" class="branch-meta-text">十二月 · 小寒/大寒 · 15°–45°</span>
+          </div>
+
+          <!-- Real-Time 3-Segment 12-Branch × 24-Mountain Interlock Visualizer -->
+          <div class="overlap-bar">
+            <div id="segLeft" class="overlap-seg">
+              <b id="segLeftName">癸山后半</b>
+              <span>左半山 7.5°</span>
+            </div>
+            <div id="segCore" class="overlap-seg">
+              <b id="segCoreName">丑山核心</b>
+              <span>本山纯气 15°</span>
+            </div>
+            <div id="segRight" class="overlap-seg">
+              <b id="segRightName">艮山前半</b>
+              <span>右半山 7.5°</span>
+            </div>
+          </div>
+
+          <p id="palaceDesc" class="palace-desc">
+            左右拖动屏幕、滑动角度条或点击顶部贵人徽章，实时预览十二地支×二十四山双层穿插定位。
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- BOTTOM HUD: DUAL-RING SVG LUOPAN + FINE-TUNE + 0°-360° SLIDER -->
+    <footer class="bottom-stack">
+      <div class="luopan-row">
+        <button id="btnNudgeLeft" type="button" class="side-nudge-btn" title="逆时针微调 5°">
+          -5°<span>左微调</span>
+        </button>
+
+        <div class="luopan-frame">
+          <svg id="dualLuopanSvg" viewBox="0 0 360 360"></svg>
+
+          <!-- Fixed Crimson Tianxin Shidao (天心十道) Crosshair + Center Hub -->
+          <svg class="luopan-overlay-svg" viewBox="0 0 360 360">
+            <polygon points="180,2 173,14 187,14" fill="#EF4444" />
+            <line x1="180" y1="12" x2="180" y2="124" stroke="#EF4444" stroke-width="1.6" stroke-opacity="0.92" />
+            <line x1="180" y1="236" x2="180" y2="352" stroke="#EF4444" stroke-width="1.2" stroke-opacity="0.65" />
+            <line x1="10" y1="180" x2="124" y2="180" stroke="#EF4444" stroke-width="1.1" stroke-opacity="0.52" />
+            <line x1="236" y1="180" x2="350" y2="180" stroke="#EF4444" stroke-width="1.1" stroke-opacity="0.52" />
+            <circle cx="180" cy="180" r="55" fill="rgba(7, 9, 15, 0.90)" stroke="rgba(245, 208, 97, 0.62)" stroke-width="1.4" />
+            <circle cx="180" cy="180" r="50" fill="none" stroke="rgba(239, 68, 68, 0.35)" stroke-width="0.8" stroke-dasharray="2.5 3.5" />
+          </svg>
+
+          <div class="luopan-hub-readout">
+            <div class="hub-deg tabular"><b id="hubDeg">030.0</b><span>°</span></div>
+            <div id="hubMtn" class="hub-mtn">丑山 · 丑宫</div>
+            <div id="hubSub" class="hub-sub">东北 NE1 · 十二月</div>
+          </div>
+        </div>
+
+        <button id="btnNudgeRight" type="button" class="side-nudge-btn" title="顺时针微调 5°">
+          +5°<span>右微调</span>
+        </button>
+      </div>
+
+      <div class="glass-panel control-deck">
+        <div id="sliderRow" class="slider-row">
+          <span class="slider-label">模拟方位</span>
+          <input id="headingSlider" type="range" min="0" max="359.5" step="0.5" value="30" class="cyber-slider" aria-label="模拟方位角滑块" />
+          <span id="sliderVal" class="slider-val tabular">30.0°</span>
+        </div>
+
+        <div id="sensorLiveRow" class="sensor-live-row hidden">
+          <div class="sensor-live-left">
+            <span class="pulse-dot"></span>
+            <span id="sensorLiveMsg" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">真机指南针监听中（sin/cos 圆周滤波）</span>
+          </div>
+          <button id="btnReturnSim" type="button" class="mini-btn">切回模拟</button>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ==================== LAYER 4A: BAZI & FORMULA SETTINGS DRAWER ==================== -->
+  <div id="setupModal" class="modal-backdrop hidden">
+    <div class="glass-panel modal-sheet">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">八字排盘 · 天乙贵人双层配置</h2>
+          <p class="modal-sub">纯内存本地计算，不上传且不写入任何本地存储</p>
+        </div>
+        <button id="btnCloseSetup" type="button" class="close-btn" aria-label="关闭">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Mode Switcher -->
+        <div class="seg-tabs">
+          <button id="tabBirth" type="button" class="seg-btn active">生日排盘模式</button>
+          <button id="tabQuick" type="button" class="seg-btn">隐私快选十天干</button>
+        </div>
+
+        <!-- Panel A: Birthday Input -->
+        <div id="panelBirth" style="display:flex;flex-direction:column;gap:12px;">
+          <div class="field-grid">
+            <div>
+              <label for="inputDate" class="field-label"><span>阳历出生日期</span></label>
+              <input id="inputDate" type="date" value="1984-03-15" min="1901-01-01" max="2099-12-31" class="cyber-input" />
+            </div>
+            <div>
+              <div class="field-label">
+                <span>出生时间</span>
+                <label class="checkbox-inline">
+                  <input id="toggleUseTime" type="checkbox" /> 填写时辰
+                </label>
+              </div>
+              <input id="inputTime" type="time" value="09:30" disabled class="cyber-input" />
+            </div>
+          </div>
+
+          <div class="pillars-box">
+            <div class="pillars-head">
+              <span>八字四柱排盘</span>
+              <span id="engineTag" style="color:var(--gold-bright);">内置精准历法引擎</span>
+            </div>
+            <div class="pillars-grid">
+              <div class="pillar-cell year-master">
+                <div class="pillar-lbl" style="color:var(--jade-light);">年柱·年干</div>
+                <div id="pYearGan" class="pillar-gan" style="color:var(--jade-light);">甲</div>
+                <div id="pYearZhi" class="pillar-zhi">子</div>
+              </div>
+              <div class="pillar-cell">
+                <div class="pillar-lbl">月柱</div>
+                <div id="pMonthGan" class="pillar-gan">丁</div>
+                <div id="pMonthZhi" class="pillar-zhi">卯</div>
+              </div>
+              <div class="pillar-cell day-master">
+                <div class="pillar-lbl" style="color:var(--gold-bright);">日柱·日主</div>
+                <div id="pDayGan" class="pillar-gan" style="color:var(--gold-bright);">戊</div>
+                <div id="pDayZhi" class="pillar-zhi">辰</div>
+              </div>
+              <div class="pillar-cell">
+                <div class="pillar-lbl">时柱</div>
+                <div id="pTimeGan" class="pillar-gan" style="color:var(--text-dim);">—</div>
+                <div id="pTimeZhi" class="pillar-zhi" style="color:var(--text-dim);">隐私隐去</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Benchmark Toggle -->
+          <div>
+            <div class="section-label">查法基准</div>
+            <div class="choice-grid-3">
+              <button type="button" data-basis="day" class="choice-btn center basis-opt active">
+                <div class="choice-title">日干为主</div>
+                <div class="choice-desc">鎏金日贵</div>
+              </button>
+              <button type="button" data-basis="year" class="choice-btn center basis-opt">
+                <div class="choice-title">年干为主</div>
+                <div class="choice-desc">青玉年贵</div>
+              </button>
+              <button type="button" data-basis="both" class="choice-btn center basis-opt">
+                <div class="choice-title">日+年双显</div>
+                <div class="choice-desc">金日+青年</div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel B: Quick 10 Heavenly Stems -->
+        <div id="panelQuick" class="hidden" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="section-label" style="margin-bottom:0;">无需填写生日，直接点选十天干（日干或年干）：</div>
+          <div id="quickStemGrid" class="stems-grid"></div>
+        </div>
+
+        <!-- Formula School Toggle -->
+        <div>
+          <div class="section-label">天乙贵人口诀派别</div>
+          <div class="choice-grid-2">
+            <button type="button" data-formula="xieji" class="choice-btn formula-opt active">
+              <div class="choice-title">古法正宗 · 昼夜分定</div>
+              <div class="choice-desc">《协纪辨方书》阳贵(昼) / 阴贵(夜)分定</div>
+            </button>
+            <button type="button" data-formula="popular" class="choice-btn formula-opt">
+              <div class="choice-title">通行口诀</div>
+              <div class="choice-desc">甲戊并牛羊，庚辛逢马虎（不分昼夜）</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Preview Summary -->
+        <div class="preview-box">
+          <div style="font-size:12px;font-weight:700;color:var(--gold-bright);">当前命局天乙贵人双层山向：</div>
+          <div id="setupPreviewList" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnApplySetup" type="button" class="cta-btn">应用并转向贵人核心方位</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== LAYER 4B: 12-BRANCH × 24-MOUNTAIN LEGEND MODAL ==================== -->
+  <div id="legendModal" class="modal-backdrop hidden">
+    <div class="glass-panel modal-sheet wide">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">十二地支（30°）穿插二十四山（15°）对照图谱</h2>
+          <p class="modal-sub">地支大宫界线（15°、45°、75°…）精准平分八天干与四维卦中心线</p>
+        </div>
+        <button id="btnCloseLegend" type="button" class="close-btn" aria-label="关闭">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="preview-box" style="font-size:11.5px;line-height:1.55;color:#E5E7EB;">
+          <div><b style="color:var(--gold-bright);">古法正宗（《协纪辨方书》昼夜分定）：</b>甲戊庚→阳贵(昼)丑/阴贵(夜)未；乙己→昼子夜申；丙丁→昼亥夜酉；壬癸→昼巳夜卯；六辛→昼午夜寅。</div>
+          <div><b style="color:var(--amber-light);">通行口诀：</b>甲戊并牛羊，乙己鼠猴乡，丙丁猪鸡位，壬癸兔蛇藏，庚辛逢马虎。</div>
+          <div><b style="color:var(--crimson-light);">四维中线警示：</b>45°(艮中)、135°(巽中)、225°(坤中)、315°(乾中) 处于两宫交界，室内精准摆件宜避开 ±2.5° 交界线，微调归入 15° 纯气本山。</div>
+        </div>
+        <div class="ref-table-wrap">
+          <table class="ref-table">
+            <thead>
+              <tr>
+                <th>地支大宫</th>
+                <th>方位与区间</th>
+                <th>月建 · 节气</th>
+                <th>穿插覆盖二十四山（左半山 + 本山 + 右半山）</th>
+              </tr>
+            </thead>
+            <tbody id="legendTableBody" class="tabular"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== LAYER 5: TOAST NOTIFICATIONS (NON-BLOCKING) ==================== -->
+  <div id="toastStack"></div>
+
+  <!-- ==================== SELF-CONTAINED APPLICATION LOGIC ==================== -->
+  <script>
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. EXACT 24 MOUNTAINS (15° OUTER RING) & 12 EARTHLY BRANCHES (30° INNER RING)
+      // =========================================================================
+      var MOUNTAINS_24 = [
+        { name: '壬', code: 'N1',  dir8: '北',   mid: 345, start: 337.5, end: 352.5, kind: 'stem' },
+        { name: '子', code: 'N2',  dir8: '北',   mid: 0,   start: 352.5, end: 7.5,   kind: 'branch', animal: '鼠' },
+        { name: '癸', code: 'N3',  dir8: '北',   mid: 15,  start: 7.5,   end: 22.5,  kind: 'stem' },
+        { name: '丑', code: 'NE1', dir8: '东北', mid: 30,  start: 22.5,  end: 37.5,  kind: 'branch', animal: '牛' },
+        { name: '艮', code: 'NE2', dir8: '东北', mid: 45,  start: 37.5,  end: 52.5,  kind: 'trigram' },
+        { name: '寅', code: 'NE3', dir8: '东北', mid: 60,  start: 52.5,  end: 67.5,  kind: 'branch', animal: '虎' },
+        { name: '甲', code: 'E1',  dir8: '东',   mid: 75,  start: 67.5,  end: 82.5,  kind: 'stem' },
+        { name: '卯', code: 'E2',  dir8: '东',   mid: 90,  start: 82.5,  end: 97.5,  kind: 'branch', animal: '兔' },
+        { name: '乙', code: 'E3',  dir8: '东',   mid: 105, start: 97.5,  end: 112.5, kind: 'stem' },
+        { name: '辰', code: 'SE1', dir8: '东南', mid: 120, start: 112.5, end: 127.5, kind: 'branch', animal: '龙' },
+        { name: '巽', code: 'SE2', dir8: '东南', mid: 135, start: 127.5, end: 142.5, kind: 'trigram' },
+        { name: '巳', code: 'SE3', dir8: '东南', mid: 150, start: 142.5, end: 157.5, kind: 'branch', animal: '蛇' },
+        { name: '丙', code: 'S1',  dir8: '南',   mid: 165, start: 157.5, end: 172.5, kind: 'stem' },
+        { name: '午', code: 'S2',  dir8: '南',   mid: 180, start: 172.5, end: 187.5, kind: 'branch', animal: '马' },
+        { name: '丁', code: 'S3',  dir8: '南',   mid: 195, start: 187.5, end: 202.5, kind: 'stem' },
+        { name: '未', code: 'SW1', dir8: '西南', mid: 210, start: 202.5, end: 217.5, kind: 'branch', animal: '羊' },
+        { name: '坤', code: 'SW2', dir8: '西南', mid: 225, start: 217.5, end: 232.5, kind: 'trigram' },
+        { name: '申', code: 'SW3', dir8: '西南', mid: 240, start: 232.5, end: 247.5, kind: 'branch', animal: '猴' },
+        { name: '庚', code: 'W1',  dir8: '西',   mid: 255, start: 247.5, end: 262.5, kind: 'stem' },
+        { name: '酉', code: 'W2',  dir8: '西',   mid: 270, start: 262.5, end: 277.5, kind: 'branch', animal: '鸡' },
+        { name: '辛', code: 'W3',  dir8: '西',   mid: 285, start: 277.5, end: 292.5, kind: 'stem' },
+        { name: '戌', code: 'NW1', dir8: '西北', mid: 300, start: 292.5, end: 307.5, kind: 'branch', animal: '狗' },
+        { name: '乾', code: 'NW2', dir8: '西北', mid: 315, start: 307.5, end: 322.5, kind: 'trigram' },
+        { name: '亥', code: 'NW3', dir8: '西北', mid: 330, start: 322.5, end: 337.5, kind: 'branch', animal: '猪' }
+      ];
+
+      var BRANCHES_12 = [
+        { name: '子', animal: '鼠', mid: 0,   start: 345, end: 15,  dirText: '正北',   month: '十一月', terms: '大雪/冬至', leftHalf: '壬山后半', rightHalf: '癸山前半', cornerDelta: null },
+        { name: '丑', animal: '牛', mid: 30,  start: 15,  end: 45,  dirText: '北偏东', month: '十二月', terms: '小寒/大寒', leftHalf: '癸山后半', rightHalf: '艮山前半', cornerDelta: 14.5 },
+        { name: '寅', animal: '虎', mid: 60,  start: 45,  end: 75,  dirText: '东偏北', month: '正月',   terms: '立春/雨水', leftHalf: '艮山后半', rightHalf: '甲山前半', cornerDelta: -14.5 },
+        { name: '卯', animal: '兔', mid: 90,  start: 75,  end: 105, dirText: '正东',   month: '二月',   terms: '惊蛰/春分', leftHalf: '甲山后半', rightHalf: '乙山前半', cornerDelta: null },
+        { name: '辰', animal: '龙', mid: 120, start: 105, end: 135, dirText: '东偏南', month: '三月',   terms: '清明/谷雨', leftHalf: '乙山后半', rightHalf: '巽山前半', cornerDelta: 14.5 },
+        { name: '巳', animal: '蛇', mid: 150, start: 135, end: 165, dirText: '南偏东', month: '四月',   terms: '立夏/小满', leftHalf: '巽山后半', rightHalf: '丙山前半', cornerDelta: -14.5 },
+        { name: '午', animal: '马', mid: 180, start: 165, end: 195, dirText: '正南',   month: '五月',   terms: '芒种/夏至', leftHalf: '丙山后半', rightHalf: '丁山前半', cornerDelta: null },
+        { name: '未', animal: '羊', mid: 210, start: 195, end: 225, dirText: '南偏西', month: '六月',   terms: '小暑/大暑', leftHalf: '丁山后半', rightHalf: '坤山前半', cornerDelta: 14.5 },
+        { name: '申', animal: '猴', mid: 240, start: 225, end: 255, dirText: '西偏南', month: '七月',   terms: '立秋/处暑', leftHalf: '坤山后半', rightHalf: '庚山前半', cornerDelta: -14.5 },
+        { name: '酉', animal: '鸡', mid: 270, start: 255, end: 285, dirText: '正西',   month: '八月',   terms: '白露/秋分', leftHalf: '庚山后半', rightHalf: '辛山前半', cornerDelta: null },
+        { name: '戌', animal: '狗', mid: 300, start: 285, end: 315, dirText: '西偏北', month: '九月',   terms: '寒露/霜降', leftHalf: '辛山后半', rightHalf: '乾山前半', cornerDelta: 14.5 },
+        { name: '亥', animal: '猪', mid: 330, start: 315, end: 345, dirText: '北偏西', month: '十月',   terms: '立冬/小雪', leftHalf: '乾山后半', rightHalf: '壬山前半', cornerDelta: -14.5 }
+      ];
+
+      var FOUR_CORNERS = [
+        { deg: 45,  name: '艮中 45°' },
+        { deg: 135, name: '巽中 135°' },
+        { deg: 225, name: '坤中 225°' },
+        { deg: 315, name: '乾中 315°' }
+      ];
+
+      var STEMS_LIST = [
+        { ch: '甲', wx: '阳木' }, { ch: '乙', wx: '阴木' },
+        { ch: '丙', wx: '阳火' }, { ch: '丁', wx: '阴火' },
+        { ch: '戊', wx: '阳土' }, { ch: '己', wx: '阴土' },
+        { ch: '庚', wx: '阳金' }, { ch: '辛', wx: '阴金' },
+        { ch: '壬', wx: '阳水' }, { ch: '癸', wx: '阴水' }
+      ];
+      var STEMS_10 = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+      var ZHIS_12  = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+
+      var BRANCH_MAP = {};
+      BRANCHES_12.forEach(function (b) { BRANCH_MAP[b.name] = b; });
+      var MOUNTAIN_MAP = {};
+      MOUNTAINS_24.forEach(function (m) { MOUNTAIN_MAP[m.name] = m; });
+
+      // =========================================================================
+      // 2. TIANYI NOBLEMAN FORMULAS & PRACTICAL FENG SHUI GUIDANCE
+      // =========================================================================
+      var FORMULAS = {
+        // 古法正宗（《协纪辨方书》阳贵/阴贵 昼夜分定）
+        xieji: {
+          title: '古法正宗',
+          map: {
+            '甲': [{ branch: '丑', tag: '阳贵·昼' }, { branch: '未', tag: '阴贵·夜' }],
+            '戊': [{ branch: '丑', tag: '阳贵·昼' }, { branch: '未', tag: '阴贵·夜' }],
+            '庚': [{ branch: '丑', tag: '阳贵·昼' }, { branch: '未', tag: '阴贵·夜' }],
+            '乙': [{ branch: '子', tag: '阳贵·昼' }, { branch: '申', tag: '阴贵·夜' }],
+            '己': [{ branch: '子', tag: '阳贵·昼' }, { branch: '申', tag: '阴贵·夜' }],
+            '丙': [{ branch: '亥', tag: '阳贵·昼' }, { branch: '酉', tag: '阴贵·夜' }],
+            '丁': [{ branch: '亥', tag: '阳贵·昼' }, { branch: '酉', tag: '阴贵·夜' }],
+            '壬': [{ branch: '巳', tag: '阳贵·昼' }, { branch: '卯', tag: '阴贵·夜' }],
+            '癸': [{ branch: '巳', tag: '阳贵·昼' }, { branch: '卯', tag: '阴贵·夜' }],
+            '辛': [{ branch: '午', tag: '阳贵·昼' }, { branch: '寅', tag: '阴贵·夜' }]
+          }
+        },
+        // 通行口诀（甲戊并牛羊，乙己鼠猴乡，丙丁猪鸡位，壬癸兔蛇藏，庚辛逢马虎）
+        popular: {
+          title: '通行口诀',
+          map: {
+            '甲': [{ branch: '丑', tag: '贵人' }, { branch: '未', tag: '贵人' }],
+            '戊': [{ branch: '丑', tag: '贵人' }, { branch: '未', tag: '贵人' }],
+            '乙': [{ branch: '子', tag: '贵人' }, { branch: '申', tag: '贵人' }],
+            '己': [{ branch: '子', tag: '贵人' }, { branch: '申', tag: '贵人' }],
+            '丙': [{ branch: '亥', tag: '贵人' }, { branch: '酉', tag: '贵人' }],
+            '丁': [{ branch: '亥', tag: '贵人' }, { branch: '酉', tag: '贵人' }],
+            '壬': [{ branch: '卯', tag: '贵人' }, { branch: '巳', tag: '贵人' }],
+            '癸': [{ branch: '卯', tag: '贵人' }, { branch: '巳', tag: '贵人' }],
+            '庚': [{ branch: '午', tag: '贵人' }, { branch: '寅', tag: '贵人' }],
+            '辛': [{ branch: '午', tag: '贵人' }, { branch: '寅', tag: '贵人' }]
+          }
+        }
+      };
+
+      var CORE_TIPS = {
+        '子': '纯正地支坎水本位，气纯无杂；宜作书桌坐向中轴或定点置雅致水景/黑曜石摆件，利智囊贵人。',
+        '丑': '纯正地支丑土本位，气聚稳健；宜定办公主座、谈判朝向或摆陶瓷/黄水晶/暖灯，利厚实财贵。',
+        '寅': '纯正地支寅木本位，生发纯粹；宜置常绿盆栽或木质文房摆件，面向此方启案签约利升迁贵人。',
+        '卯': '纯正地支卯木本位，清朗无杂；宜作会客主位或点缀生机绿植，利策划创意与直属领导提携。',
+        '巳': '纯正地支巳火本位，明达灵动；宜设明净暖光台灯或雅致香薰，利跨界合作与远方贵人。',
+        '午': '纯正地支午火本位，离明纯粹；宜保持整洁通透与明亮灯光，利重要会面、声望显达。',
+        '未': '纯正地支未土本位，温润和合；宜定点布局工位中轴或摆放温润玉石/暖灯，利长辈人脉助力。',
+        '申': '纯正地支申金本位，刚健果决；宜作决策主座或置简约金属摆件，利专业突破与实干贵人。',
+        '酉': '纯正地支酉金本位，清雅兑悦；宜保持桌面洁净或置白水晶/金属器物，利谈判签约喜贵。',
+        '亥': '纯正地支亥水本位，乾方涵养；宜作静室主位或品茗会客坐向，利高层资源引荐与暗中扶持。'
+      };
+
+      // =========================================================================
+      // 3. PURE IN-MEMORY STATE (ZERO localStorage / sessionStorage)
+      // =========================================================================
+      var state = {
+        inputMode: 'birth',    // 'birth' | 'quick'
+        birthDate: '1984-03-15',
+        useTime: false,
+        birthTime: '09:30',
+        quickStem: '甲',
+        basis: 'day',          // 'day' | 'year' | 'both'
+        formula: 'xieji',      // 'xieji' | 'popular'
+
+        // Toggleable Palace Description Panel state:
+        // 'compact' (default slim 1-line pill), 'expanded' (full card), 'hidden' (100% pure AR view)
+        panelMode: 'compact',
+
+        bazi: {
+          yearGan: '甲', yearZhi: '子',
+          monthGan: '丁', monthZhi: '卯',
+          dayGan: '戊', dayZhi: '辰',
+          timeGan: '—', timeZhi: '隐私隐去',
+          sourceLabel: '内置精准历法引擎'
+        },
+
+        noblemen: [],
+        focusedIdx: 0,
+
+        // Compass heading & circular sin/cos smoothing
+        sensorMode: 'simulation', // 'simulation' | 'sensor'
+        targetHeading: 30,
+        displayHeading: 30,
+        smoothSin: Math.sin(30 * Math.PI / 180),
+        smoothCos: Math.cos(30 * Math.PI / 180),
+
+        // Smooth animation
+        animating: false,
+        animStartDeg: 30,
+        animEndDeg: 30,
+        animStartMs: 0,
+        animDurMs: 560,
+
+        // Hardware
+        cameraActive: false,
+        cameraStream: null,
+        sensorBound: false,
+        sensorGotData: false,
+
+        // Dragging
+        dragging: false,
+        lastDragX: 0
+      };
+
+      // =========================================================================
+      // 4. ANGLE GEOMETRY HELPERS (EXACT 0°/360° WRAPAROUND)
+      // =========================================================================
+      function normDeg(d) {
+        var x = d % 360;
+        return x < 0 ? x + 360 : x;
+      }
+
+      // Signed shortest difference from `fromDeg` to `toDeg` in [-180, 180)
+      function shortestDiff(fromDeg, toDeg) {
+        return ((toDeg - fromDeg + 540) % 360) - 180;
+      }
+
+      function getMountainAt(deg) {
+        var h = normDeg(deg);
+        for (var i = 0; i < MOUNTAINS_24.length; i++) {
+          var d = shortestDiff(MOUNTAINS_24[i].mid, h);
+          if (d >= -7.5 && d < 7.5) return MOUNTAINS_24[i];
+        }
+        return MOUNTAINS_24[1];
+      }
+
+      function getBranchAt(deg) {
+        var h = normDeg(deg);
+        for (var i = 0; i < BRANCHES_12.length; i++) {
+          var d = shortestDiff(BRANCHES_12[i].mid, h);
+          if (d >= -15 && d < 15) return { branch: BRANCHES_12[i], diff: d };
+        }
+        return { branch: BRANCHES_12[0], diff: 0 };
+      }
+
+      function getFourCornerNear(deg) {
+        var h = normDeg(deg);
+        for (var i = 0; i < FOUR_CORNERS.length; i++) {
+          var d = shortestDiff(FOUR_CORNERS[i].deg, h);
+          if (Math.abs(d) <= 2.5) return { corner: FOUR_CORNERS[i], diff: d };
+        }
+        return null;
+      }
+
+      // =========================================================================
+      // 5. ROCK-SOLID BUILT-IN PURE JS BAZI ENGINE + ASYNC lunar-javascript
+      // =========================================================================
+      function gregorianToJDN(year, month, day) {
+        var a = Math.floor((14 - month) / 12);
+        var y = year + 4800 - a;
+        var m = month + 12 * a - 3;
+        return day + Math.floor((153 * m + 2) / 5) + 365 * y +
+               Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) - 32045;
+      }
+
+      // Anchor: 1900-01-31 = 甲辰日 (60-Jiazi index 40: 甲=0, 辰=4)
+      var REF_JDN_1900_01_31 = gregorianToJDN(1900, 1, 31); // 2415051
+
+      function computeBaZiOffline(year, month, day, hour, useTime) {
+        // 1) Exact Day Pillar via Julian Day Number
+        var jdn = gregorianToJDN(year, month, day);
+        var dayIdx60 = ((jdn - REF_JDN_1900_01_31 + 40) % 60 + 60) % 60;
+        var dayGanIdx = dayIdx60 % 10;
+        var dayZhiIdx = dayIdx60 % 12;
+
+        // 2) Year Pillar using LiChun boundary (approx Feb 4)
+        var baziYear = (month < 2 || (month === 2 && day < 4)) ? (year - 1) : year;
+        var yearGanIdx = ((baziYear - 4) % 10 + 10) % 10;
+        var yearZhiIdx = ((baziYear - 4) % 12 + 12) % 12;
+
+        // 3) Month Pillar via Solar Term approximation + Five Tigers
+        var jieDays = [6, 4, 6, 5, 6, 6, 7, 8, 8, 8, 7, 7];
+        var mOrder = month - 2; // Feb = 0 (寅月)
+        if (day < jieDays[month - 1]) mOrder -= 1;
+        mOrder = ((mOrder % 12) + 12) % 12;
+        var monthZhiIdx = (mOrder + 2) % 12;
+        var monthGanStart = ((yearGanIdx % 5) * 2 + 2) % 10;
+        var monthGanIdx = (monthGanStart + mOrder) % 10;
+
+        // 4) Hour Pillar via Five Rats (optional)
+        var timeGan = '—';
+        var timeZhi = '隐私隐去';
+        if (useTime) {
+          var effDayGan = hour >= 23 ? (dayGanIdx + 1) % 10 : dayGanIdx;
+          var hzIdx = Math.floor(((hour + 1) % 24) / 2);
+          var hgStart = ((effDayGan % 5) * 2) % 10;
+          timeGan = STEMS_10[(hgStart + hzIdx) % 10];
+          timeZhi = ZHIS_12[hzIdx];
+        }
+
+        return {
+          yearGan: STEMS_10[yearGanIdx],
+          yearZhi: ZHIS_12[yearZhiIdx],
+          monthGan: STEMS_10[monthGanIdx],
+          monthZhi: ZHIS_12[monthZhiIdx],
+          dayGan: STEMS_10[dayGanIdx],
+          dayZhi: ZHIS_12[dayZhiIdx],
+          timeGan: timeGan,
+          timeZhi: timeZhi,
+          sourceLabel: '内置精准历法引擎'
+        };
+      }
+
+      function computeBaZi() {
+        var parts = (state.birthDate || '1984-03-15').split('-');
+        var y = parseInt(parts[0], 10) || 1984;
+        var m = parseInt(parts[1], 10) || 3;
+        var d = parseInt(parts[2], 10) || 15;
+        var h = 12, min = 0;
+        if (state.useTime && state.birthTime) {
+          var tp = state.birthTime.split(':');
+          h = parseInt(tp[0], 10) || 0;
+          min = parseInt(tp[1], 10) || 0;
+        }
+
+        try {
+          if (typeof window.Solar !== 'undefined' && typeof window.Solar.fromYmdHms === 'function') {
+            var solar = window.Solar.fromYmdHms(y, m, d, h, min, 0);
+            var lunar = solar.getLunar();
+            var ec = lunar.getEightChar();
+            state.bazi = {
+              yearGan: ec.getYearGan(),
+              yearZhi: ec.getYearZhi(),
+              monthGan: ec.getMonthGan(),
+              monthZhi: ec.getMonthZhi(),
+              dayGan: ec.getDayGan(),
+              dayZhi: ec.getDayZhi(),
+              timeGan: state.useTime ? ec.getTimeGan() : '—',
+              timeZhi: state.useTime ? ec.getTimeZhi() : '隐私隐去',
+              sourceLabel: 'lunar-javascript 节气精排'
+            };
+            return;
+          }
+        } catch (err) {
+          // Graceful fallback to built-in engine
+        }
+
+        state.bazi = computeBaZiOffline(y, m, d, h, state.useTime);
+      }
+
+      function computeNoblemen() {
+        var fMap = FORMULAS[state.formula].map;
+        var mapByBranch = {};
+        var order = [];
+
+        function addStem(stem, roleType) {
+          var list = fMap[stem] || [];
+          for (var i = 0; i < list.length; i++) {
+            var item = list[i];
+            var bObj = BRANCH_MAP[item.branch];
+            var mObj = MOUNTAIN_MAP[item.branch];
+            if (!bObj || !mObj) continue;
+
+            if (!mapByBranch[item.branch]) {
+              var entry = {
+                branch: item.branch,
+                branchObj: bObj,
+                mountainObj: mObj,
+                role: roleType, // 'day' | 'year' | 'both'
+                tags: [item.tag],
+                sources: [roleType === 'day' ? ('日干' + stem) : ('年干' + stem)]
+              };
+              mapByBranch[item.branch] = entry;
+              order.push(entry);
+            } else {
+              var ex = mapByBranch[item.branch];
+              if (ex.role !== roleType) ex.role = 'both';
+              if (ex.tags.indexOf(item.tag) === -1) ex.tags.push(item.tag);
+              var src = roleType === 'day' ? ('日干' + stem) : ('年干' + stem);
+              if (ex.sources.indexOf(src) === -1) ex.sources.push(src);
+            }
+          }
+        }
+
+        if (state.inputMode === 'quick') {
+          addStem(state.quickStem, 'day');
+        } else if (state.basis === 'day') {
+          addStem(state.bazi.dayGan, 'day');
+        } else if (state.basis === 'year') {
+          addStem(state.bazi.yearGan, 'year');
+        } else {
+          addStem(state.bazi.dayGan, 'day');
+          addStem(state.bazi.yearGan, 'year');
+        }
+
+        state.noblemen = order;
+        if (state.focusedIdx >= state.noblemen.length) state.focusedIdx = 0;
+      }
+
+      // =========================================================================
+      // 6. NON-BLOCKING TOAST SYSTEM (NO alert / confirm)
+      // =========================================================================
+      function showToast(msg, tone) {
+        var stack = document.getElementById('toastStack');
+        if (!stack) return;
+        var el = document.createElement('div');
+        el.className = 'toast-item' + (tone ? (' tone-' + tone) : '');
+        el.textContent = msg;
+        stack.appendChild(el);
+        requestAnimationFrame(function () { el.classList.add('show'); });
+        setTimeout(function () {
+          el.classList.remove('show');
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 280);
+        }, 3000);
+      }
+
+      // =========================================================================
+      // 7. TOGGLEABLE PALACE DESCRIPTION PANEL CONTROLLER
+      // =========================================================================
+      function setPanelMode(nextMode, silent) {
+        state.panelMode = nextMode;
+        var dock = document.getElementById('palaceDock');
+        var header = document.getElementById('palaceHeader');
+        var toggleChip = document.getElementById('palaceToggleChip');
+        var topBtn = document.getElementById('btnTogglePanel');
+        var topLabel = document.getElementById('btnTogglePanelLabel');
+
+        dock.classList.remove('mode-compact', 'mode-expanded', 'mode-hidden');
+        dock.classList.add('mode-' + nextMode);
+
+        if (nextMode === 'expanded') {
+          header.setAttribute('aria-expanded', 'true');
+          toggleChip.textContent = '收起 ▴';
+          topBtn.classList.add('active-gold');
+          topLabel.textContent = '隐藏';
+        } else if (nextMode === 'compact') {
+          header.setAttribute('aria-expanded', 'false');
+          toggleChip.textContent = '展开 ▾';
+          topBtn.classList.remove('active-gold');
+          topLabel.textContent = '详情';
+        } else {
+          // 'hidden' - Pure AR View
+          header.setAttribute('aria-expanded', 'false');
+          topBtn.classList.remove('active-gold');
+          topLabel.textContent = '详情';
+          if (!silent) showToast('已隐藏宫位浮窗，点击顶部「详情」可随时恢复', 'gold');
+        }
+      }
+
+      // =========================================================================
+      // 8. DUAL-RING SVG LUOPAN RENDERER (OUTER 24 MOUNTAINS × INNER 12 BRANCHES)
+      // =========================================================================
+      function polarXY(cx, cy, r, deg) {
+        var rad = (deg - 90) * Math.PI / 180;
+        return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+      }
+
+      function arcSector(cx, cy, rIn, rOut, startDeg, endDeg) {
+        var p1 = polarXY(cx, cy, rOut, startDeg);
+        var p2 = polarXY(cx, cy, rOut, endDeg);
+        var p3 = polarXY(cx, cy, rIn, endDeg);
+        var p4 = polarXY(cx, cy, rIn, startDeg);
+        var large = (endDeg - startDeg) > 180 ? 1 : 0;
+        return 'M ' + p1.x.toFixed(2) + ' ' + p1.y.toFixed(2) +
+               ' A ' + rOut + ' ' + rOut + ' 0 ' + large + ' 1 ' + p2.x.toFixed(2) + ' ' + p2.y.toFixed(2) +
+               ' L ' + p3.x.toFixed(2) + ' ' + p3.y.toFixed(2) +
+               ' A ' + rIn + ' ' + rIn + ' 0 ' + large + ' 0 ' + p4.x.toFixed(2) + ' ' + p4.y.toFixed(2) + ' Z';
+      }
+
+      function renderDualLuopanSVG() {
+        var svg = document.getElementById('dualLuopanSvg');
+        if (!svg) return;
+        var cx = 180, cy = 180;
+        var nobleByBranch = {};
+        state.noblemen.forEach(function (n) { nobleByBranch[n.branch] = n; });
+
+        var out = [];
+        out.push(
+          '<defs>' +
+            '<radialGradient id="dialBg" cx="50%" cy="50%" r="50%">' +
+              '<stop offset="0%" stop-color="#12192A"/>' +
+              '<stop offset="75%" stop-color="#090D16"/>' +
+              '<stop offset="100%" stop-color="#05070C"/>' +
+            '</radialGradient>' +
+            '<linearGradient id="coreGold" x1="0%" y1="0%" x2="100%" y2="100%">' +
+              '<stop offset="0%" stop-color="#F5D061" stop-opacity="0.82"/>' +
+              '<stop offset="100%" stop-color="#D4AF37" stop-opacity="0.34"/>' +
+            '</linearGradient>' +
+            '<linearGradient id="wingAmber" x1="0%" y1="0%" x2="100%" y2="100%">' +
+              '<stop offset="0%" stop-color="#F59E0B" stop-opacity="0.38"/>' +
+              '<stop offset="100%" stop-color="#B45309" stop-opacity="0.16"/>' +
+            '</linearGradient>' +
+            '<linearGradient id="coreJade" x1="0%" y1="0%" x2="100%" y2="100%">' +
+              '<stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.78"/>' +
+              '<stop offset="100%" stop-color="#0F766E" stop-opacity="0.32"/>' +
+            '</linearGradient>' +
+            '<linearGradient id="wingJade" x1="0%" y1="0%" x2="100%" y2="100%">' +
+              '<stop offset="0%" stop-color="#2DD4BF" stop-opacity="0.32"/>' +
+              '<stop offset="100%" stop-color="#0F766E" stop-opacity="0.12"/>' +
+            '</linearGradient>' +
+            '<linearGradient id="dualGrad" x1="0%" y1="0%" x2="100%" y2="100%">' +
+              '<stop offset="0%" stop-color="#F5D061" stop-opacity="0.85"/>' +
+              '<stop offset="100%" stop-color="#2DD4BF" stop-opacity="0.45"/>' +
+            '</linearGradient>' +
+          '</defs>' +
+          '<circle cx="180" cy="180" r="176" fill="url(#dialBg)" stroke="rgba(212,175,55,0.45)" stroke-width="1.2"/>'
+        );
+
+        // 1) Outer 360° degree ticks
+        for (var d = 0; d < 360; d += 5) {
+          var is15 = (d % 15 === 0);
+          var isCorner = (d === 45 || d === 135 || d === 225 || d === 315);
+          var t1 = polarXY(cx, cy, 175, d);
+          var t2 = polarXY(cx, cy, is15 ? 166 : 170, d);
+          var tc = isCorner ? 'rgba(239,68,68,0.9)' : is15 ? 'rgba(245,208,97,0.68)' : 'rgba(255,255,255,0.22)';
+          out.push('<line x1="' + t1.x.toFixed(1) + '" y1="' + t1.y.toFixed(1) + '" x2="' + t2.x.toFixed(1) + '" y2="' + t2.y.toFixed(1) + '" stroke="' + tc + '" stroke-width="' + (isCorner ? 1.6 : is15 ? 1.1 : 0.6) + '"/>');
+        }
+
+        // 2) Outer Ring: 24 Mountains (r = 122..165, 15° sectors)
+        for (var i = 0; i < MOUNTAINS_24.length; i++) {
+          var m = MOUNTAINS_24[i];
+          var n = nobleByBranch[m.name];
+          var fill = m.kind === 'branch' ? 'rgba(255,255,255,0.032)' : 'rgba(255,255,255,0.008)';
+          var stroke = 'rgba(212,175,55,0.22)';
+          if (n) {
+            fill = n.role === 'both' ? 'url(#dualGrad)' : (n.role === 'year' ? 'url(#coreJade)' : 'url(#coreGold)');
+            stroke = n.role === 'year' ? '#5EEAD4' : '#F5D061';
+          }
+          out.push('<path d="' + arcSector(cx, cy, 122, 165, m.mid - 7.5, m.mid + 7.5) + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + (n ? 1.3 : 0.55) + '"/>');
+        }
+
+        // 2b) Interlocking Half-Mountain Wing Highlights (±7.5° to ±15° on outer ring)
+        for (var k = 0; k < state.noblemen.length; k++) {
+          var nb = state.noblemen[k];
+          var mid = nb.branchObj.mid;
+          var isJade = (nb.role === 'year');
+          var wFill = isJade ? 'url(#wingJade)' : 'url(#wingAmber)';
+          var wStroke = isJade ? 'rgba(94,234,212,0.58)' : 'rgba(245,158,11,0.68)';
+          out.push('<path d="' + arcSector(cx, cy, 122, 165, mid - 15, mid - 7.5) + '" fill="' + wFill + '" stroke="' + wStroke + '" stroke-width="0.9" stroke-dasharray="2.5 2"/>');
+          out.push('<path d="' + arcSector(cx, cy, 122, 165, mid + 7.5, mid + 15) + '" fill="' + wFill + '" stroke="' + wStroke + '" stroke-width="0.9" stroke-dasharray="2.5 2"/>');
+        }
+
+        // 2c) Outer Ring Mountain Labels
+        for (var j = 0; j < MOUNTAINS_24.length; j++) {
+          var m2 = MOUNTAINS_24[j];
+          var n2 = nobleByBranch[m2.name];
+          var pos = polarXY(cx, cy, 144, m2.mid);
+          var txtCol = n2 ? '#FFFFFF' : (m2.kind === 'trigram' ? '#FCA5A5' : m2.kind === 'branch' ? '#E5E7EB' : 'rgba(209,213,219,0.74)');
+          out.push('<text x="' + pos.x.toFixed(1) + '" y="' + pos.y.toFixed(1) + '" fill="' + txtCol + '" font-size="' + (n2 ? 15.5 : 13) + '" font-family="Songti SC, Noto Serif SC, SimSun, serif" font-weight="' + (n2 ? '700' : '500') + '" text-anchor="middle" dominant-baseline="central" transform="rotate(' + m2.mid + ',' + pos.x.toFixed(1) + ',' + pos.y.toFixed(1) + ')">' + m2.name + '</text>');
+          if (n2) {
+            var dot = polarXY(cx, cy, 159.5, m2.mid);
+            out.push('<circle cx="' + dot.x.toFixed(1) + '" cy="' + dot.y.toFixed(1) + '" r="2.8" fill="' + (n2.role === 'year' ? '#5EEAD4' : '#F5D061') + '"/>');
+          }
+        }
+
+        // 3) Inner Ring: 12 Earthly Branches Palaces (r = 62..122, 30° sectors)
+        for (var bIdx = 0; bIdx < BRANCHES_12.length; bIdx++) {
+          var b = BRANCHES_12[bIdx];
+          var nb2 = nobleByBranch[b.name];
+          var bFill = 'rgba(212,175,55,0.03)';
+          var bStroke = 'rgba(245,208,97,0.34)';
+          var bNameCol = 'rgba(245,208,97,0.90)';
+          var bSubCol = 'rgba(156,163,175,0.76)';
+
+          if (nb2) {
+            if (nb2.role === 'both') {
+              bFill = 'url(#dualGrad)'; bStroke = '#F5D061'; bNameCol = '#FFFFFF'; bSubCol = '#FEF08A';
+            } else if (nb2.role === 'year') {
+              bFill = 'url(#coreJade)'; bStroke = '#5EEAD4'; bNameCol = '#CCFBF1'; bSubCol = '#99F6E4';
+            } else {
+              bFill = 'url(#wingAmber)'; bStroke = '#F5D061'; bNameCol = '#FEF08A'; bSubCol = '#FDE68A';
+            }
+          }
+
+          out.push('<path d="' + arcSector(cx, cy, 62, 122, b.mid - 15, b.mid + 15) + '" fill="' + bFill + '" stroke="' + bStroke + '" stroke-width="' + (nb2 ? 1.25 : 0.8) + '"/>');
+
+          var pChar = polarXY(cx, cy, 102, b.mid);
+          out.push('<text x="' + pChar.x.toFixed(1) + '" y="' + pChar.y.toFixed(1) + '" fill="' + bNameCol + '" font-size="' + (nb2 ? 15 : 13.5) + '" font-family="Songti SC, Noto Serif SC, SimSun, serif" font-weight="700" text-anchor="middle" dominant-baseline="central" transform="rotate(' + b.mid + ',' + pChar.x.toFixed(1) + ',' + pChar.y.toFixed(1) + ')">' + b.name + '</text>');
+
+          var pSub = polarXY(cx, cy, 80, b.mid);
+          var termShort = b.terms.split('/')[1];
+          out.push('<text x="' + pSub.x.toFixed(1) + '" y="' + pSub.y.toFixed(1) + '" fill="' + bSubCol + '" font-size="7.4" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-weight="500" text-anchor="middle" dominant-baseline="central" transform="rotate(' + b.mid + ',' + pSub.x.toFixed(1) + ',' + pSub.y.toFixed(1) + ')">' + b.month + '·' + termShort + '</text>');
+        }
+
+        // 4) Interlocking Bisector Lines (15°, 45°, 75°, ..., 345°) cutting through outer Stems & Trigrams
+        for (var bd = 15; bd < 360; bd += 30) {
+          var isC = (bd === 45 || bd === 135 || bd === 225 || bd === 315);
+          var pIn = polarXY(cx, cy, 62, bd);
+          var pMid = polarXY(cx, cy, 122, bd);
+          var pNotch = polarXY(cx, cy, 134, bd);
+          var pOut = polarXY(cx, cy, 165, bd);
+
+          out.push('<line x1="' + pIn.x.toFixed(1) + '" y1="' + pIn.y.toFixed(1) + '" x2="' + pMid.x.toFixed(1) + '" y2="' + pMid.y.toFixed(1) + '" stroke="' + (isC ? 'rgba(239,68,68,0.82)' : 'rgba(245,208,97,0.45)') + '" stroke-width="' + (isC ? 1.35 : 0.9) + '"/>');
+          out.push('<line x1="' + pMid.x.toFixed(1) + '" y1="' + pMid.y.toFixed(1) + '" x2="' + pOut.x.toFixed(1) + '" y2="' + pOut.y.toFixed(1) + '" stroke="' + (isC ? 'rgba(239,68,68,0.72)' : 'rgba(245,158,11,0.42)') + '" stroke-width="' + (isC ? 1.15 : 0.8) + '" stroke-dasharray="2.5 2.5"/>');
+          out.push('<line x1="' + pMid.x.toFixed(1) + '" y1="' + pMid.y.toFixed(1) + '" x2="' + pNotch.x.toFixed(1) + '" y2="' + pNotch.y.toFixed(1) + '" stroke="' + (isC ? '#EF4444' : '#F5D061') + '" stroke-width="' + (isC ? 1.7 : 1.1) + '"/>');
+        }
+
+        // Ring Concentric Borders
+        out.push('<circle cx="180" cy="180" r="165" fill="none" stroke="rgba(212,175,55,0.52)" stroke-width="1"/>');
+        out.push('<circle cx="180" cy="180" r="122" fill="none" stroke="rgba(245,208,97,0.65)" stroke-width="1.3"/>');
+        out.push('<circle cx="180" cy="180" r="62"  fill="none" stroke="rgba(212,175,55,0.48)" stroke-width="1"/>');
+
+        svg.innerHTML = out.join('');
+      }
+
+      // =========================================================================
+      // 9. CANVAS RENDERERS (BG RADAR, AR HUD BEAMS, TOP HORIZON RULER)
+      // =========================================================================
+      var bgCanvas = document.getElementById('bgRadarCanvas');
+      var bgCtx = bgCanvas.getContext('2d');
+      var arCanvas = document.getElementById('arHudCanvas');
+      var arCtx = arCanvas.getContext('2d');
+      var hzCanvas = document.getElementById('horizonCanvas');
+      var hzCtx = hzCanvas.getContext('2d');
+
+      var viewW = window.innerWidth;
+      var viewH = window.innerHeight;
+      var hzW = 360;
+      var hzH = 48;
+
+      var stars = [];
+      for (var sIdx = 0; sIdx < 50; sIdx++) {
+        stars.push({
+          deg: Math.random() * 360,
+          yFrac: 0.08 + Math.random() * 0.42,
+          r: 0.7 + Math.random() * 1.4,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+
+      function drawRoundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      function resizeAllCanvases() {
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        viewW = window.innerWidth || 375;
+        viewH = window.innerHeight || 667;
+
+        bgCanvas.width = Math.max(1, Math.floor(viewW * dpr));
+        bgCanvas.height = Math.max(1, Math.floor(viewH * dpr));
+        bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        arCanvas.width = Math.max(1, Math.floor(viewW * dpr));
+        arCanvas.height = Math.max(1, Math.floor(viewH * dpr));
+        arCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        var rect = hzCanvas.parentElement ? hzCanvas.parentElement.getBoundingClientRect() : { width: 340, height: 48 };
+        hzW = Math.max(120, rect.width);
+        hzH = Math.max(38, rect.height);
+        hzCanvas.width = Math.floor(hzW * dpr);
+        hzCanvas.height = Math.floor(hzH * dpr);
+        hzCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function drawBackgroundRadar(heading, nowMs) {
+        bgCtx.clearRect(0, 0, viewW, viewH);
+        var horizonY = viewH * 0.42;
+        var fov = 76;
+        var pxPerDeg = viewW / fov;
+
+        if (!state.cameraActive) {
+          var bg = bgCtx.createRadialGradient(viewW * 0.5, horizonY, 20, viewW * 0.5, horizonY, Math.max(viewW, viewH) * 0.85);
+          bg.addColorStop(0, '#131C30');
+          bg.addColorStop(0.5, '#090D18');
+          bg.addColorStop(1, '#05070C');
+          bgCtx.fillStyle = bg;
+          bgCtx.fillRect(0, 0, viewW, viewH);
+
+          // Twinkling Starfield rotating with heading
+          for (var i = 0; i < stars.length; i++) {
+            var st = stars[i];
+            var diff = shortestDiff(heading, st.deg);
+            if (Math.abs(diff) > fov * 0.65) continue;
+            var sx = viewW * 0.5 + diff * pxPerDeg;
+            var sy = viewH * st.yFrac;
+            var alpha = 0.22 + 0.36 * Math.sin(nowMs * 0.0018 + st.phase);
+            bgCtx.beginPath();
+            bgCtx.arc(sx, sy, st.r, 0, Math.PI * 2);
+            bgCtx.fillStyle = 'rgba(245, 208, 97, ' + alpha.toFixed(2) + ')';
+            bgCtx.fill();
+          }
+
+          // Cyber-Zen Perspective Grid Floor
+          for (var r = 1; r <= 7; r++) {
+            var t = r / 7;
+            var y = horizonY + Math.pow(t, 1.85) * (viewH - horizonY);
+            bgCtx.beginPath();
+            bgCtx.moveTo(0, y);
+            bgCtx.lineTo(viewW, y);
+            bgCtx.strokeStyle = 'rgba(212, 175, 55, 0.09)';
+            bgCtx.lineWidth = 1;
+            bgCtx.stroke();
+          }
+
+          for (var d = 0; d < 360; d += 15) {
+            var dl = shortestDiff(heading, d);
+            if (Math.abs(dl) > fov * 0.72) continue;
+            var topX = viewW * 0.5 + dl * pxPerDeg;
+            var botX = viewW * 0.5 + dl * pxPerDeg * 3.0;
+            var isC = (d === 45 || d === 135 || d === 225 || d === 315);
+            bgCtx.beginPath();
+            bgCtx.moveTo(topX, horizonY);
+            bgCtx.lineTo(botX, viewH);
+            bgCtx.strokeStyle = isC ? 'rgba(239, 68, 68, 0.24)' : (d % 30 === 0 ? 'rgba(245, 208, 97, 0.16)' : 'rgba(212, 175, 55, 0.07)');
+            bgCtx.lineWidth = isC ? 1.2 : 1;
+            bgCtx.stroke();
+          }
+        } else {
+          // Subtle camera vignette to preserve HUD readability without darkening center
+          var vig = bgCtx.createRadialGradient(viewW * 0.5, viewH * 0.45, Math.min(viewW, viewH) * 0.28, viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.80);
+          vig.addColorStop(0, 'rgba(0,0,0,0)');
+          vig.addColorStop(1, 'rgba(5,7,12,0.48)');
+          bgCtx.fillStyle = vig;
+          bgCtx.fillRect(0, 0, viewW, viewH);
+        }
+      }
+
+      function drawARHudProjections(heading, nowMs) {
+        arCtx.clearRect(0, 0, viewW, viewH);
+        var horizonY = viewH * 0.42;
+        var fov = 76;
+        var pxPerDeg = viewW / fov;
+
+        // Subtle horizon reference line
+        arCtx.beginPath();
+        arCtx.moveTo(viewW * 0.08, horizonY);
+        arCtx.lineTo(viewW * 0.92, horizonY);
+        arCtx.strokeStyle = 'rgba(245, 208, 97, 0.18)';
+        arCtx.lineWidth = 1;
+        arCtx.stroke();
+
+        // 1) 4-Corner Midline Dashed Crimson Boundary Markers in AR Space
+        for (var i = 0; i < FOUR_CORNERS.length; i++) {
+          var fc = FOUR_CORNERS[i];
+          var cd = shortestDiff(heading, fc.deg);
+          if (Math.abs(cd) > 42) continue;
+          var cx = viewW * 0.5 + cd * pxPerDeg;
+          arCtx.save();
+          arCtx.setLineDash([5, 5]);
+          arCtx.beginPath();
+          arCtx.moveTo(cx, viewH * 0.21);
+          arCtx.lineTo(cx, viewH * 0.66);
+          arCtx.strokeStyle = 'rgba(239, 68, 68, 0.62)';
+          arCtx.lineWidth = 1.5;
+          arCtx.stroke();
+          arCtx.setLineDash([]);
+
+          arCtx.font = '600 10.5px "PingFang SC", "Microsoft YaHei", sans-serif';
+          arCtx.textAlign = 'center';
+          arCtx.fillStyle = '#FCA5A5';
+          arCtx.fillText('四维界·' + fc.name, cx, viewH * 0.21 - 7);
+          arCtx.restore();
+        }
+
+        // 2) Vertical AR Energy Beams (Wing ±15° + Core ±7.5°) for Active Noblemen
+        var pulse = 0.78 + 0.22 * Math.sin(nowMs * 0.0042);
+        for (var j = 0; j < state.noblemen.length; j++) {
+          var n = state.noblemen[j];
+          var delta = shortestDiff(heading, n.branchObj.mid);
+          if (Math.abs(delta) > 42) continue;
+
+          var x = viewW * 0.5 + delta * pxPerDeg;
+          var halfCore = 7.5 * pxPerDeg;
+          var halfWing = 15 * pxPerDeg;
+          var isJade = (n.role === 'year');
+
+          // Wider translucent wing aura (±15°)
+          var wingRgb = isJade ? '45, 212, 191' : '245, 158, 11';
+          var wGrad = arCtx.createLinearGradient(x, viewH * 0.16, x, viewH * 0.72);
+          wGrad.addColorStop(0, 'rgba(' + wingRgb + ', 0)');
+          wGrad.addColorStop(0.45, 'rgba(' + wingRgb + ', ' + (0.12 * pulse).toFixed(3) + ')');
+          wGrad.addColorStop(0.55, 'rgba(' + wingRgb + ', ' + (0.15 * pulse).toFixed(3) + ')');
+          wGrad.addColorStop(1, 'rgba(' + wingRgb + ', 0)');
+          arCtx.fillStyle = wGrad;
+          arCtx.fillRect(x - halfWing, viewH * 0.16, halfWing * 2, viewH * 0.56);
+
+          // Dashed wing borders
+          arCtx.save();
+          arCtx.setLineDash([4, 6]);
+          arCtx.strokeStyle = 'rgba(' + wingRgb + ', 0.42)';
+          arCtx.lineWidth = 1;
+          arCtx.beginPath();
+          arCtx.moveTo(x - halfWing, viewH * 0.22);
+          arCtx.lineTo(x - halfWing, viewH * 0.66);
+          arCtx.moveTo(x + halfWing, viewH * 0.22);
+          arCtx.lineTo(x + halfWing, viewH * 0.66);
+          arCtx.stroke();
+          arCtx.restore();
+
+          // Concentrated Core 15° Gold/Jade Beam
+          var coreRgb = isJade ? '94, 234, 212' : '245, 208, 97';
+          var cGrad = arCtx.createLinearGradient(x, viewH * 0.15, x, viewH * 0.74);
+          cGrad.addColorStop(0, 'rgba(' + coreRgb + ', 0)');
+          cGrad.addColorStop(0.42, 'rgba(' + coreRgb + ', ' + (0.24 * pulse).toFixed(3) + ')');
+          cGrad.addColorStop(0.52, 'rgba(' + coreRgb + ', ' + (0.36 * pulse).toFixed(3) + ')');
+          cGrad.addColorStop(1, 'rgba(' + coreRgb + ', 0)');
+          arCtx.fillStyle = cGrad;
+          arCtx.fillRect(x - halfCore, viewH * 0.15, halfCore * 2, viewH * 0.59);
+
+          // Luminous Center Axis
+          arCtx.beginPath();
+          arCtx.moveTo(x, viewH * 0.18);
+          arCtx.lineTo(x, viewH * 0.70);
+          arCtx.strokeStyle = 'rgba(' + coreRgb + ', ' + (0.76 * pulse).toFixed(3) + ')';
+          arCtx.lineWidth = 1.8;
+          arCtx.stroke();
+
+          // Floating AR Space Tag Pill
+          var pillY = Math.max(viewH * 0.24, horizonY - 82);
+          var tag = n.branch + '山·' + n.branchObj.animal + ' (' + n.tags[0] + ')';
+          arCtx.save();
+          arCtx.font = '700 11.5px "Songti SC", "Noto Serif SC", serif';
+          var tw = arCtx.measureText(tag).width + 20;
+          drawRoundRect(arCtx, x - tw / 2, pillY - 12, tw, 24, 12);
+          arCtx.fillStyle = 'rgba(7, 10, 17, 0.86)';
+          arCtx.fill();
+          arCtx.strokeStyle = isJade ? '#5EEAD4' : '#F5D061';
+          arCtx.lineWidth = 1.2;
+          arCtx.stroke();
+
+          arCtx.fillStyle = isJade ? '#CCFBF1' : '#FEF08A';
+          arCtx.textAlign = 'center';
+          arCtx.textBaseline = 'middle';
+          arCtx.fillText(tag, x, pillY);
+          arCtx.restore();
+        }
+      }
+
+      function drawHorizonRuler(heading) {
+        hzCtx.clearRect(0, 0, hzW, hzH);
+        var fov = 92;
+        var pxPerDeg = hzW / fov;
+        var cx = hzW / 2;
+
+        // 1) Highlight Active Nobleman Bands (30° Wing + 15° Core)
+        for (var i = 0; i < state.noblemen.length; i++) {
+          var n = state.noblemen[i];
+          var delta = shortestDiff(heading, n.branchObj.mid);
+          if (Math.abs(delta) > fov * 0.72) continue;
+          var x = cx + delta * pxPerDeg;
+          var isJade = (n.role === 'year');
+
+          var half30 = 15 * pxPerDeg;
+          hzCtx.fillStyle = isJade ? 'rgba(45, 212, 191, 0.16)' : 'rgba(245, 158, 11, 0.18)';
+          hzCtx.fillRect(x - half30, 0, half30 * 2, hzH);
+          hzCtx.fillStyle = isJade ? 'rgba(94, 234, 212, 0.65)' : 'rgba(245, 158, 11, 0.80)';
+          hzCtx.fillRect(x - half30, 0, half30 * 2, 2.5);
+
+          var half15 = 7.5 * pxPerDeg;
+          hzCtx.fillStyle = isJade ? 'rgba(45, 212, 191, 0.30)' : 'rgba(245, 208, 97, 0.32)';
+          hzCtx.fillRect(x - half15, 0, half15 * 2, hzH);
+          hzCtx.fillStyle = isJade ? '#5EEAD4' : '#F5D061';
+          hzCtx.fillRect(x - half15, 0, half15 * 2, 4);
+        }
+
+        // 2) 12-Branch Dividers (15°, 45°, 75°, ...)
+        for (var d = 15; d < 360; d += 30) {
+          var dl = shortestDiff(heading, d);
+          if (Math.abs(dl) > fov * 0.6) continue;
+          var dx = cx + dl * pxPerDeg;
+          var isC = (d === 45 || d === 135 || d === 225 || d === 315);
+          hzCtx.beginPath();
+          hzCtx.moveTo(dx, 0);
+          hzCtx.lineTo(dx, isC ? hzH * 0.62 : hzH * 0.42);
+          hzCtx.strokeStyle = isC ? 'rgba(239, 68, 68, 0.88)' : 'rgba(245, 208, 97, 0.45)';
+          hzCtx.lineWidth = isC ? 1.5 : 1;
+          hzCtx.stroke();
+        }
+
+        var nobleLookup = {};
+        state.noblemen.forEach(function (n) { nobleLookup[n.branch] = n; });
+
+        // Top Row: 12 Earthly Branches Palace Labels
+        for (var bIdx = 0; bIdx < BRANCHES_12.length; bIdx++) {
+          var b = BRANCHES_12[bIdx];
+          var bd = shortestDiff(heading, b.mid);
+          if (Math.abs(bd) > fov * 0.62) continue;
+          var bx = cx + bd * pxPerDeg;
+          var nb = nobleLookup[b.name];
+          hzCtx.font = (nb ? '700 ' : '500 ') + '10px "PingFang SC", "Microsoft YaHei", sans-serif';
+          hzCtx.textAlign = 'center';
+          hzCtx.fillStyle = nb ? (nb.role === 'year' ? '#99F6E4' : '#F5D061') : 'rgba(245, 208, 97, 0.72)';
+          hzCtx.fillText(b.name + '宫·' + b.dirText, bx, 14);
+        }
+
+        // Midline separator
+        hzCtx.beginPath();
+        hzCtx.moveTo(0, 20);
+        hzCtx.lineTo(hzW, 20);
+        hzCtx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
+        hzCtx.lineWidth = 1;
+        hzCtx.stroke();
+
+        // Bottom Row: Fine Ticks & 24 Mountains
+        for (var tk = 0; tk < 360; tk += 5) {
+          var td = shortestDiff(heading, tk);
+          if (Math.abs(td) > fov * 0.58) continue;
+          var tx = cx + td * pxPerDeg;
+          var big = (tk % 15 === 0);
+          hzCtx.beginPath();
+          hzCtx.moveTo(tx, hzH);
+          hzCtx.lineTo(tx, hzH - (big ? 7 : 3.5));
+          hzCtx.strokeStyle = big ? 'rgba(245, 208, 97, 0.58)' : 'rgba(255, 255, 255, 0.22)';
+          hzCtx.lineWidth = big ? 1.2 : 0.8;
+          hzCtx.stroke();
+        }
+
+        for (var mIdx = 0; mIdx < MOUNTAINS_24.length; mIdx++) {
+          var m = MOUNTAINS_24[mIdx];
+          var md = shortestDiff(heading, m.mid);
+          if (Math.abs(md) > fov * 0.62) continue;
+          var mx = cx + md * pxPerDeg;
+          var nm = nobleLookup[m.name];
+          hzCtx.font = (nm ? '700 12.5px ' : '500 11px ') + '"Songti SC", "Noto Serif SC", serif';
+          hzCtx.textAlign = 'center';
+          hzCtx.fillStyle = nm ? (nm.role === 'year' ? '#CCFBF1' : '#FEF08A') : (m.kind === 'trigram' ? '#FCA5A5' : m.kind === 'branch' ? '#E5E7EB' : 'rgba(209,213,219,0.68)');
+          hzCtx.fillText(m.name, mx, hzH - 10);
+        }
+
+        // Edge Fade
+        var fade = hzCtx.createLinearGradient(0, 0, hzW, 0);
+        fade.addColorStop(0, 'rgba(7,9,15,0.92)');
+        fade.addColorStop(0.16, 'rgba(7,9,15,0)');
+        fade.addColorStop(0.84, 'rgba(7,9,15,0)');
+        fade.addColorStop(1, 'rgba(7,9,15,0.92)');
+        hzCtx.fillStyle = fade;
+        hzCtx.fillRect(0, 0, hzW, hzH);
+      }
+
+      // =========================================================================
+      // 10. REAL-TIME 3-STATE LOCK, 4-CORNER WARNING & TOGGLEABLE PALACE HUD
+      // =========================================================================
+      var dom = {
+        luopanSvg: document.getElementById('dualLuopanSvg'),
+        hubDeg: document.getElementById('hubDeg'),
+        hubMtn: document.getElementById('hubMtn'),
+        hubSub: document.getElementById('hubSub'),
+        reticle: document.getElementById('arReticle'),
+        guidePill: document.getElementById('guidePill'),
+        cornerAlert: document.getElementById('cornerAlert'),
+
+        palaceDock: document.getElementById('palaceDock'),
+        statusDot: document.getElementById('statusDot'),
+        palaceBrief: document.getElementById('palaceBrief'),
+        palaceDegChip: document.getElementById('palaceDegChip'),
+        palaceDeltaText: document.getElementById('palaceDeltaText'),
+        palaceBranchMeta: document.getElementById('palaceBranchMeta'),
+        segLeft: document.getElementById('segLeft'),
+        segCore: document.getElementById('segCore'),
+        segRight: document.getElementById('segRight'),
+        segLeftName: document.getElementById('segLeftName'),
+        segCoreName: document.getElementById('segCoreName'),
+        segRightName: document.getElementById('segRightName'),
+        palaceDesc: document.getElementById('palaceDesc'),
+
+        slider: document.getElementById('headingSlider'),
+        sliderVal: document.getElementById('sliderVal')
+      };
+
+      function updateHUD(heading) {
+        var h = normDeg(heading);
+        var m24 = getMountainAt(h);
+        var bInfo = getBranchAt(h);
+        var b12 = bInfo.branch;
+        var nearCorner = getFourCornerNear(h);
+
+        // Rotate dual-ring compass smoothly
+        dom.luopanSvg.style.transform = 'rotate(' + (-h).toFixed(2) + 'deg)';
+
+        // Center hub readout
+        var degStr = h.toFixed(1);
+        while (degStr.length < 5) degStr = '0' + degStr;
+        dom.hubDeg.textContent = degStr;
+        dom.hubMtn.textContent = m24.name + '山 · ' + b12.name + '宫';
+        dom.hubSub.textContent = m24.dir8 + ' ' + m24.code + ' · ' + b12.month;
+
+        // 4-Corner midline warning banner (±2.5° around 45°/135°/225°/315°)
+        if (nearCorner) {
+          dom.cornerAlert.classList.remove('hidden');
+          dom.cornerAlert.textContent = '⚠ 临近四维中线（' + nearCorner.corner.name + '），易生跨山杂气，建议避开交界线';
+        } else {
+          dom.cornerAlert.classList.add('hidden');
+        }
+
+        // Check Nobleman lock status (Core <= 7.5°, Wing 7.5°..15°, or Scanning)
+        var hitNoble = null;
+        var hitZone = 'none';
+        var hitDiff = 0;
+
+        for (var i = 0; i < state.noblemen.length; i++) {
+          var nb = state.noblemen[i];
+          var dFromMid = shortestDiff(nb.branchObj.mid, h); // + => right of center
+          var absD = Math.abs(dFromMid);
+          if (absD <= 7.5) {
+            hitNoble = nb;
+            hitZone = 'core';
+            hitDiff = dFromMid;
+            break;
+          } else if (absD <= 15) {
+            hitNoble = nb;
+            hitZone = 'wing';
+            hitDiff = dFromMid;
+            break;
+          }
+        }
+
+        // Nearest Nobleman for guidance
+        var nearest = state.noblemen[0] || null;
+        var nearestSigned = 0;
+        var minAbs = 999;
+        for (var j = 0; j < state.noblemen.length; j++) {
+          var cand = state.noblemen[j];
+          var sd = shortestDiff(h, cand.branchObj.mid); // + => turn right
+          if (Math.abs(sd) < minAbs) {
+            minAbs = Math.abs(sd);
+            nearestSigned = sd;
+            nearest = cand;
+          }
+        }
+
+        // Update 3-segment 12-Branch × 24-Mountain overlap visualizer
+        var activeBranch = hitNoble ? hitNoble.branchObj : b12;
+        var activeDiff = hitNoble ? hitDiff : bInfo.diff;
+        dom.segLeftName.textContent = activeBranch.leftHalf;
+        dom.segCoreName.textContent = activeBranch.name + '山核心';
+        dom.segRightName.textContent = activeBranch.rightHalf;
+        dom.palaceBranchMeta.textContent = activeBranch.month + ' · ' + activeBranch.terms + ' · ' + activeBranch.start + '°–' + activeBranch.end + '°';
+
+        dom.segLeft.className = 'overlap-seg';
+        dom.segCore.className = 'overlap-seg';
+        dom.segRight.className = 'overlap-seg';
+
+        // Reset theme classes on palaceDock while preserving mode-* class
+        dom.palaceDock.classList.remove('state-core-gold', 'state-core-jade', 'state-wing', 'state-corner');
+
+        if (hitZone === 'core' && hitNoble) {
+          var isJade = (hitNoble.role === 'year');
+          dom.palaceDock.classList.add(isJade ? 'state-core-jade' : 'state-core-gold');
+          dom.reticle.className = 'ar-reticle ' + (isJade ? 'state-core-jade' : 'state-core-gold');
+          dom.statusDot.className = 'status-dot ' + (isJade ? 'jade' : 'gold');
+          dom.segCore.classList.add(isJade ? 'active-core-jade' : 'active-core-gold');
+
+          var roleStr = hitNoble.role === 'both' ? '日年双贵' : (isJade ? '年贵' : '日贵');
+          dom.palaceBrief.textContent = '✦ ' + hitNoble.branch + '宫核心 · ' + hitNoble.branch + '山 (' + hitNoble.tags[0] + ')';
+          dom.palaceBrief.style.color = isJade ? 'var(--jade-pale)' : 'var(--gold-bright)';
+          dom.palaceDegChip.textContent = roleStr + ' ' + h.toFixed(1) + '°';
+
+          var signStr = hitDiff >= 0 ? '+' : '';
+          dom.palaceDeltaText.style.color = isJade ? 'var(--jade-light)' : 'var(--gold-bright)';
+          dom.palaceDeltaText.textContent = Math.abs(hitDiff) < 0.8
+            ? ('已精准归中 · ' + hitNoble.branch + '山正中 (' + hitNoble.branchObj.mid + '°)')
+            : ('核心纯气 · 偏心 ' + signStr + hitDiff.toFixed(1) + '°（' + m24.start + '°~' + m24.end + '°）');
+
+          dom.palaceDesc.textContent = CORE_TIPS[hitNoble.branch] || '当前处于15°纯正地支本山，气纯宜定点布局或作坐向中轴。';
+          dom.guidePill.classList.add('hidden');
+        } else if (hitZone === 'wing' && hitNoble) {
+          var isLeftWing = (hitDiff < 0);
+          var halfName = isLeftWing ? hitNoble.branchObj.leftHalf : hitNoble.branchObj.rightHalf;
+          var toCenter = Math.abs(hitDiff).toFixed(1);
+          var turnWord = hitDiff > 0 ? '向左' : '向右';
+          var arrow = hitDiff > 0 ? '←' : '→';
+          var signW = hitDiff >= 0 ? '+' : '';
+
+          if (nearCorner) {
+            dom.palaceDock.classList.add('state-corner');
+            dom.reticle.className = 'ar-reticle state-corner';
+            dom.statusDot.className = 'status-dot crimson';
+            dom.palaceBrief.textContent = '⚠ 临' + nearCorner.corner.name + ' · ' + hitNoble.branch + '宫边缘';
+            dom.palaceBrief.style.color = 'var(--crimson-light)';
+          } else {
+            dom.palaceDock.classList.add('state-wing');
+            dom.reticle.className = 'ar-reticle state-wing';
+            dom.statusDot.className = 'status-dot amber';
+            dom.palaceBrief.textContent = '◈ ' + hitNoble.branch + '宫余气 · 兼' + halfName;
+            dom.palaceBrief.style.color = 'var(--amber-light)';
+          }
+
+          if (isLeftWing) dom.segLeft.classList.add('active-wing');
+          else dom.segRight.classList.add('active-wing');
+
+          dom.palaceDegChip.textContent = signW + hitDiff.toFixed(1) + '°';
+          dom.palaceDeltaText.style.color = nearCorner ? 'var(--crimson-light)' : 'var(--amber-light)';
+          dom.palaceDeltaText.textContent = '偏差 ' + signW + hitDiff.toFixed(1) + '° · 建议' + turnWord + '微调 ' + toCenter + '° 归中';
+
+          dom.palaceDesc.textContent = nearCorner
+            ? ('当前落入【' + halfName + '】并紧贴四维中线（' + nearCorner.corner.name + '），易混跨山杂气；请' + turnWord + '微调 ' + toCenter + '° 归入【' + hitNoble.branch + '山】15°核心纯气区。')
+            : ('当前位于【' + hitNoble.branch + '宫】30°余气翼区，兼跨【' + halfName + '】。大方位选座可用；若摆放催贵摆件或定工位中轴，请' + turnWord + '微调 ' + toCenter + '° 归入核心本山。');
+
+          dom.guidePill.classList.remove('hidden');
+          dom.guidePill.className = 'glass-pill guide-pill wing-cue';
+          dom.guidePill.textContent = arrow + ' ' + turnWord + '微调 ' + toCenter + '° 归中至【' + hitNoble.branch + '山】纯气核心';
+        } else {
+          if (nearCorner) {
+            dom.palaceDock.classList.add('state-corner');
+            dom.reticle.className = 'ar-reticle state-corner';
+            dom.statusDot.className = 'status-dot crimson';
+            dom.palaceBrief.textContent = '⚠ 临' + nearCorner.corner.name + ' · ' + m24.name + '山';
+            dom.palaceBrief.style.color = 'var(--crimson-light)';
+          } else {
+            dom.reticle.className = 'ar-reticle';
+            dom.statusDot.className = 'status-dot';
+            dom.palaceBrief.textContent = b12.name + '宫 · ' + m24.name + '山 (' + m24.dir8 + ')';
+            dom.palaceBrief.style.color = '#F3F4F6';
+          }
+
+          if (activeDiff < -7.5) dom.segLeft.classList.add('active-scan');
+          else if (activeDiff >= 7.5) dom.segRight.classList.add('active-scan');
+          else dom.segCore.classList.add('active-scan');
+
+          dom.palaceDegChip.textContent = h.toFixed(1) + '°';
+          dom.palaceDeltaText.style.color = '#D1D5DB';
+
+          if (nearest) {
+            var degAway = Math.round(minAbs);
+            var dirTurn = nearestSigned < 0 ? '向左旋转 ' : '向右旋转 ';
+            var gText = nearestSigned < 0
+              ? ('← 向左旋转 ' + degAway + '° 寻【' + nearest.branch + '·' + nearest.branchObj.animal + '】贵人')
+              : ('向右旋转 ' + degAway + '° 寻【' + nearest.branch + '·' + nearest.branchObj.animal + '】贵人 →');
+
+            dom.palaceDeltaText.textContent = '距最近贵人【' + nearest.branch + '宫】' + degAway + '°';
+            dom.palaceDesc.textContent = '当前扫描【' + b12.name + '宫 / ' + m24.name + '山】。' + dirTurn + degAway + '° 可达贵人【' + nearest.branch + '宫】' + nearest.branchObj.dirText + ' ' + nearest.branchObj.mid + '°（穿插 ' + nearest.branchObj.leftHalf + ' + 本山 + ' + nearest.branchObj.rightHalf + '）。';
+
+            if (state.panelMode !== 'hidden') {
+              dom.guidePill.classList.remove('hidden');
+              dom.guidePill.className = 'glass-pill guide-pill';
+              dom.guidePill.textContent = gText;
+            } else {
+              dom.guidePill.classList.remove('hidden');
+              dom.guidePill.className = 'glass-pill guide-pill';
+              dom.guidePill.textContent = gText;
+            }
+          } else {
+            dom.palaceDeltaText.textContent = '24山：' + m24.name + '山 (' + m24.start + '°~' + m24.end + '°)';
+            dom.guidePill.classList.add('hidden');
+          }
+        }
+      }
+
+      // =========================================================================
+      // 11. SYNC ALL BAZI, PILLS & DRAWER UI
+      // =========================================================================
+      function syncAllUI() {
+        computeBaZi();
+        computeNoblemen();
+        renderDualLuopanSVG();
+
+        // Four Pillars display
+        document.getElementById('pYearGan').textContent = state.bazi.yearGan;
+        document.getElementById('pYearZhi').textContent = state.bazi.yearZhi;
+        document.getElementById('pMonthGan').textContent = state.bazi.monthGan;
+        document.getElementById('pMonthZhi').textContent = state.bazi.monthZhi;
+        document.getElementById('pDayGan').textContent = state.bazi.dayGan;
+        document.getElementById('pDayZhi').textContent = state.bazi.dayZhi;
+        document.getElementById('pTimeGan').textContent = state.bazi.timeGan;
+        document.getElementById('pTimeZhi').textContent = state.bazi.timeZhi;
+        document.getElementById('engineTag').textContent = state.bazi.sourceLabel;
+
+        // Top Bar Summary
+        var headerTxt = document.getElementById('headerBaziText');
+        if (state.inputMode === 'quick') {
+          headerTxt.innerHTML = '隐私快选 <b style="color:var(--gold-bright);">' + state.quickStem + '干</b> · ' + FORMULAS[state.formula].title;
+        } else {
+          headerTxt.innerHTML =
+            state.bazi.yearGan + state.bazi.yearZhi + ' ' +
+            state.bazi.monthGan + state.bazi.monthZhi + ' ' +
+            '<b style="color:var(--gold-bright);">' + state.bazi.dayGan + state.bazi.dayZhi + '</b> ' +
+            (state.useTime ? (state.bazi.timeGan + state.bazi.timeZhi) : '隐时') +
+            ' · ' + FORMULAS[state.formula].title;
+        }
+
+        // Top Clickable Nobleman Pills
+        var pillsWrap = document.getElementById('noblePillsContainer');
+        pillsWrap.innerHTML = '';
+        state.noblemen.forEach(function (n, idx) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          var cls = n.role === 'year' ? 'jade' : 'gold';
+          btn.className = 'noble-pill ' + cls + (idx === state.focusedIdx ? ' focused' : '');
+          var roleBadge = n.role === 'both' ? '·双贵' : (n.role === 'year' ? '·年' : '');
+          btn.innerHTML = '<span>' + n.tags[0] + '</span><b class="font-serif">' + n.branch + '</b><span class="tabular">' + n.branchObj.mid + '°</span>' + (roleBadge ? '<span style="font-size:9.5px;opacity:0.85;">' + roleBadge + '</span>' : '');
+          btn.addEventListener('click', function () {
+            state.focusedIdx = idx;
+            animateTo(n.branchObj.mid, '转向' + n.tags[0] + '【' + n.branch + '山】核心 (' + n.branchObj.mid + '°)', cls);
+            syncAllUI();
+          });
+          pillsWrap.appendChild(btn);
+        });
+
+        // Drawer Preview List
+        var prev = document.getElementById('setupPreviewList');
+        prev.innerHTML = state.noblemen.map(function (n) {
+          var col = n.role === 'year' ? 'var(--jade-light)' : 'var(--gold-bright)';
+          return '<div class="preview-item">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">' +
+              '<span><b class="font-serif" style="color:' + col + ';font-size:13px;">' + n.branch + '宫·' + n.branchObj.animal + '</b> (' + n.tags.join('/') + ' · ' + n.sources.join('+') + ')</span>' +
+              '<span class="tabular" style="color:' + col + ';font-weight:700;">' + n.branchObj.mid + '° ' + n.branchObj.dirText + '</span>' +
+            '</div>' +
+            '<div style="color:var(--text-muted);font-size:10.5px;margin-top:3px;">15°核心：' + n.mountainObj.start + '°~' + n.mountainObj.end + '° ｜ 30°穿插：' + n.branchObj.leftHalf + ' + ' + n.branch + '本山 + ' + n.branchObj.rightHalf + '</div>' +
+          '</div>';
+        }).join('');
+
+        // Sync active button states inside drawer
+        document.getElementById('tabBirth').classList.toggle('active', state.inputMode === 'birth');
+        document.getElementById('tabQuick').classList.toggle('active', state.inputMode === 'quick');
+        document.getElementById('panelBirth').classList.toggle('hidden', state.inputMode !== 'birth');
+        document.getElementById('panelQuick').classList.toggle('hidden', state.inputMode !== 'quick');
+
+        var basisBtns = document.querySelectorAll('.basis-opt');
+        for (var i = 0; i < basisBtns.length; i++) {
+          basisBtns[i].classList.toggle('active', basisBtns[i].getAttribute('data-basis') === state.basis);
+        }
+        var formBtns = document.querySelectorAll('.formula-opt');
+        for (var j = 0; j < formBtns.length; j++) {
+          formBtns[j].classList.toggle('active', formBtns[j].getAttribute('data-formula') === state.formula);
+        }
+        var stemBtns = document.querySelectorAll('.stem-btn');
+        for (var k = 0; k < stemBtns.length; k++) {
+          stemBtns[k].classList.toggle('active', stemBtns[k].getAttribute('data-stem') === state.quickStem);
+        }
+      }
+
+      // =========================================================================
+      // 12. SMOOTH HEADING CONTROL & CIRCULAR SIN/COS LOW-PASS FILTER
+      // =========================================================================
+      function resetFilterTo(deg) {
+        var r = normDeg(deg) * Math.PI / 180;
+        state.smoothSin = Math.sin(r);
+        state.smoothCos = Math.cos(r);
+      }
+
+      function setManualHeading(deg) {
+        state.animating = false;
+        state.targetHeading = normDeg(deg);
+        dom.slider.value = state.targetHeading.toFixed(1);
+        dom.sliderVal.textContent = state.targetHeading.toFixed(1) + '°';
+      }
+
+      function animateTo(deg, toastMsg, tone) {
+        if (state.sensorMode === 'sensor') stopRealCompass(false);
+        state.animating = true;
+        state.animStartDeg = state.displayHeading;
+        state.animEndDeg = normDeg(deg);
+        state.animStartMs = performance.now();
+        state.targetHeading = state.animEndDeg;
+        if (toastMsg) showToast(toastMsg, tone);
+      }
+
+      // =========================================================================
+      // 13. ROBUST CAMERA & COMPASS SENSOR HANDLERS (SANDBOX-SAFE)
+      // =========================================================================
+      function updateHardwareUI() {
+        var btnCam = document.getElementById('btnCamera');
+        var lblCam = document.getElementById('btnCameraLabel');
+        btnCam.classList.toggle('active-gold', state.cameraActive);
+        lblCam.textContent = state.cameraActive ? '关实景' : '实景';
+
+        var isSen = (state.sensorMode === 'sensor');
+        var btnSen = document.getElementById('btnSensor');
+        var lblSen = document.getElementById('btnSensorLabel');
+        var modePill = document.getElementById('sensorModePill');
+        btnSen.classList.toggle('active-jade', isSen);
+        lblSen.textContent = isSen ? '传感中' : '指南针';
+        modePill.textContent = isSen ? '传感' : '模拟';
+        modePill.classList.toggle('sensor-live', isSen);
+
+        document.getElementById('sliderRow').classList.toggle('hidden', isSen);
+        document.getElementById('sensorLiveRow').classList.toggle('hidden', !isSen);
+      }
+
+      function toggleCamera() {
+        var video = document.getElementById('cameraVideo');
+        if (state.cameraActive) {
+          try {
+            if (state.cameraStream) {
+              state.cameraStream.getTracks().forEach(function (t) { t.stop(); });
+              state.cameraStream = null;
+            }
+            video.srcObject = null;
+          } catch (e) {}
+          video.classList.remove('active');
+          state.cameraActive = false;
+          updateHardwareUI();
+          showToast('已关闭实景摄像头，切换回赛博禅意空间雷达');
+          return;
+        }
+
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+          showToast('当前环境未开放摄像头权限，请使用滑块或左右拖动体验，或在独立 HTTPS 页面打开', 'crimson');
+          return;
+        }
+
+        try {
+          navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false
+          }).then(function (stream) {
+            state.cameraStream = stream;
+            video.srcObject = stream;
+            var playPromise = video.play();
+            if (playPromise && typeof playPromise.catch === 'function') {
+              playPromise.catch(function () {});
+            }
+            video.classList.add('active');
+            state.cameraActive = true;
+            updateHardwareUI();
+            showToast('后置实景 AR 摄像头已开启', 'gold');
+          }).catch(function () {
+            state.cameraActive = false;
+            updateHardwareUI();
+            showToast('未获得摄像头权限，已保持赛博禅意空间雷达背景', 'crimson');
+          });
+        } catch (err) {
+          state.cameraActive = false;
+          updateHardwareUI();
+          showToast('未获得摄像头权限，已保持赛博禅意空间雷达背景', 'crimson');
+        }
+      }
+
+      function handleOrientation(ev) {
+        if (state.sensorMode !== 'sensor') return;
+        var raw = null;
+        if (typeof ev.webkitCompassHeading === 'number' && !isNaN(ev.webkitCompassHeading)) {
+          raw = ev.webkitCompassHeading;
+        } else if (typeof ev.alpha === 'number' && !isNaN(ev.alpha)) {
+          var scrAngle = (window.screen && window.screen.orientation && typeof window.screen.orientation.angle === 'number')
+            ? window.screen.orientation.angle
+            : (typeof window.orientation === 'number' ? window.orientation : 0);
+          raw = normDeg(360 - ev.alpha + scrAngle);
+        }
+        if (raw !== null) {
+          state.sensorGotData = true;
+          state.targetHeading = normDeg(raw);
+          document.getElementById('sensorLiveMsg').textContent = '真机磁力计实时追踪中 · sin/cos 防抖已开启';
+        }
+      }
+
+      function startRealCompass() {
+        if (typeof window.DeviceOrientationEvent === 'undefined') {
+          showToast('当前设备未检测到指南针传感器，请拖动屏幕或使用模拟滑块体验', 'crimson');
+          return;
+        }
+
+        function activateListener() {
+          state.sensorMode = 'sensor';
+          state.animating = false;
+          state.sensorGotData = false;
+          if (!state.sensorBound) {
+            window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            window.addEventListener('deviceorientation', handleOrientation, true);
+            state.sensorBound = true;
+          }
+          updateHardwareUI();
+          showToast('已切换至真机传感模式，请平端手机缓慢旋转', 'jade');
+
+          setTimeout(function () {
+            if (state.sensorMode === 'sensor' && !state.sensorGotData) {
+              document.getElementById('sensorLiveMsg').textContent = '未检测到磁力计信号，可点击右侧“切回模拟”体验';
+              showToast('未检测到磁力计数据，可切回模拟罗盘拖动或滑动体验', 'amber');
+            }
+          }, 2000);
+        }
+
+        try {
+          if (typeof window.DeviceOrientationEvent.requestPermission === 'function') {
+            window.DeviceOrientationEvent.requestPermission().then(function (res) {
+              if (res === 'granted') {
+                activateListener();
+              } else {
+                showToast('未获得方向传感器权限，已保持模拟罗盘模式', 'crimson');
+              }
+            }).catch(function () {
+              showToast('未获得方向传感器权限，已保持模拟罗盘模式', 'crimson');
+            });
+          } else {
+            activateListener();
+          }
+        } catch (err) {
+          showToast('当前环境未开放指南针传感器，已保持模拟罗盘模式', 'crimson');
+        }
+      }
+
+      function stopRealCompass(notify) {
+        state.sensorMode = 'simulation';
+        updateHardwareUI();
+        setManualHeading(state.displayHeading);
+        if (notify) showToast('已切回模拟罗盘模式，支持拖动、滑块与微调按钮');
+      }
+
+      // =========================================================================
+      // 14. 60FPS ANIMATION LOOP
+      // =========================================================================
+      function tick(nowMs) {
+        if (state.animating) {
+          var p = Math.min(1, (nowMs - state.animStartMs) / state.animDurMs);
+          var ease = 1 - Math.pow(1 - p, 3);
+          var delta = shortestDiff(state.animStartDeg, state.animEndDeg);
+          state.displayHeading = normDeg(state.animStartDeg + delta * ease);
+          resetFilterTo(state.displayHeading);
+
+          dom.slider.value = state.displayHeading.toFixed(1);
+          dom.sliderVal.textContent = state.displayHeading.toFixed(1) + '°';
+
+          if (p >= 1) {
+            state.animating = false;
+            state.displayHeading = state.animEndDeg;
+            resetFilterTo(state.displayHeading);
+          }
+        } else {
+          // Circular sin/cos low-pass filter eliminates 359° ↔ 0° jump
+          var rad = state.targetHeading * Math.PI / 180;
+          var alpha = state.sensorMode === 'sensor' ? 0.14 : 0.28;
+          state.smoothSin = state.smoothSin * (1 - alpha) + Math.sin(rad) * alpha;
+          state.smoothCos = state.smoothCos * (1 - alpha) + Math.cos(rad) * alpha;
+          var smoothed = normDeg(Math.atan2(state.smoothSin, state.smoothCos) * 180 / Math.PI);
+
+          if (Math.abs(shortestDiff(smoothed, state.targetHeading)) < 0.04) {
+            state.displayHeading = state.targetHeading;
+            resetFilterTo(state.targetHeading);
+          } else {
+            state.displayHeading = smoothed;
+          }
+        }
+
+        drawBackgroundRadar(state.displayHeading, nowMs);
+        drawARHudProjections(state.displayHeading, nowMs);
+        drawHorizonRuler(state.displayHeading);
+        updateHUD(state.displayHeading);
+
+        requestAnimationFrame(tick);
+      }
+
+      // =========================================================================
+      // 15. STATIC CONTENT POPULATION & EVENT WIRING
+      // =========================================================================
+      function populateStaticUI() {
+        var grid = document.getElementById('quickStemGrid');
+        grid.innerHTML = '';
+        STEMS_LIST.forEach(function (st) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'stem-btn';
+          b.setAttribute('data-stem', st.ch);
+          b.innerHTML = '<span class="stem-char">' + st.ch + '</span><span class="stem-wx">' + st.wx + '</span>';
+          b.addEventListener('click', function () {
+            state.quickStem = st.ch;
+            syncAllUI();
+          });
+          grid.appendChild(b);
+        });
+
+        var tbody = document.getElementById('legendTableBody');
+        tbody.innerHTML = BRANCHES_12.map(function (b) {
+          return '<tr>' +
+            '<td><b class="font-serif" style="color:var(--gold-bright);">' + b.name + '宫</b> (' + b.animal + ')</td>' +
+            '<td>' + b.dirText + ' ' + b.start + '°–' + b.end + '°</td>' +
+            '<td>' + b.month + '·' + b.terms + '</td>' +
+            '<td><span style="color:var(--amber-light);">' + b.leftHalf + '</span> + <b style="color:var(--gold-bright);">' + b.name + '本山</b> + <span style="color:var(--amber-light);">' + b.rightHalf + '</span></td>' +
+          '</tr>';
+        }).join('');
+      }
+
+      function bindAllEvents() {
+        var setupModal = document.getElementById('setupModal');
+        var legendModal = document.getElementById('legendModal');
+
+        function openSetup() { syncAllUI(); setupModal.classList.remove('hidden'); }
+        function closeSetup() { setupModal.classList.add('hidden'); }
+        function openLegend() { legendModal.classList.remove('hidden'); }
+        function closeLegend() { legendModal.classList.add('hidden'); }
+
+        // Toggleable Palace Description Panel Controls:
+        // 1) Top HUD bar toggle button: switches between Expanded and Compact (or restores from Hidden)
+        document.getElementById('btnTogglePanel').addEventListener('click', function () {
+          if (state.panelMode === 'expanded') {
+            setPanelMode('compact', true);
+          } else {
+            setPanelMode('expanded', true);
+          }
+        });
+
+        // 2) Clicking the floating palace pill header toggles Compact <-> Expanded
+        var palaceHeader = document.getElementById('palaceHeader');
+        palaceHeader.addEventListener('click', function (e) {
+          if (e.target && e.target.closest && e.target.closest('#btnDismissPanel')) return;
+          setPanelMode(state.panelMode === 'expanded' ? 'compact' : 'expanded', true);
+        });
+        palaceHeader.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setPanelMode(state.panelMode === 'expanded' ? 'compact' : 'expanded', true);
+          }
+        });
+
+        // 3) Dismiss '×' button hides the floating panel completely for 100% pure camera view
+        document.getElementById('btnDismissPanel').addEventListener('click', function (e) {
+          e.stopPropagation();
+          setPanelMode('hidden', false);
+        });
+
+        // Modals
+        document.getElementById('btnOpenSetup').addEventListener('click', openSetup);
+        document.getElementById('btnOpenSetupBrand').addEventListener('click', openSetup);
+        document.getElementById('btnCloseSetup').addEventListener('click', closeSetup);
+        setupModal.addEventListener('click', function (e) { if (e.target === setupModal) closeSetup(); });
+
+        document.getElementById('btnOpenLegend').addEventListener('click', openLegend);
+        document.getElementById('btnCloseLegend').addEventListener('click', closeLegend);
+        legendModal.addEventListener('click', function (e) { if (e.target === legendModal) closeLegend(); });
+
+        document.getElementById('btnApplySetup').addEventListener('click', function () {
+          closeSetup();
+          if (state.noblemen.length > 0) {
+            state.focusedIdx = 0;
+            var target = state.noblemen[0];
+            animateTo(target.branchObj.mid, '已定位【' + target.branch + '山】核心本位 (' + target.branchObj.mid + '°)', target.role === 'year' ? 'jade' : 'gold');
+            syncAllUI();
+          }
+        });
+
+        // Drawer Tabs & Inputs
+        document.getElementById('tabBirth').addEventListener('click', function () { state.inputMode = 'birth'; syncAllUI(); });
+        document.getElementById('tabQuick').addEventListener('click', function () { state.inputMode = 'quick'; syncAllUI(); });
+
+        document.getElementById('inputDate').addEventListener('change', function (e) {
+          if (e.target.value) { state.birthDate = e.target.value; syncAllUI(); }
+        });
+        document.getElementById('toggleUseTime').addEventListener('change', function (e) {
+          state.useTime = !!e.target.checked;
+          document.getElementById('inputTime').disabled = !state.useTime;
+          syncAllUI();
+        });
+        document.getElementById('inputTime').addEventListener('change', function (e) {
+          if (e.target.value) { state.birthTime = e.target.value; syncAllUI(); }
+        });
+
+        document.querySelectorAll('.basis-opt').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            state.basis = btn.getAttribute('data-basis');
+            syncAllUI();
+          });
+        });
+        document.querySelectorAll('.formula-opt').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            state.formula = btn.getAttribute('data-formula');
+            syncAllUI();
+          });
+        });
+
+        // Hardware Controls
+        document.getElementById('btnCamera').addEventListener('click', toggleCamera);
+        document.getElementById('btnSensor').addEventListener('click', function () {
+          if (state.sensorMode === 'sensor') stopRealCompass(true);
+          else startRealCompass();
+        });
+        document.getElementById('btnReturnSim').addEventListener('click', function () { stopRealCompass(true); });
+
+        // Quick-Test Jumps: Core 0°, Wing +10°, 4-Corner Boundary
+        document.getElementById('btnJumpCore').addEventListener('click', function () {
+          var n = state.noblemen[state.focusedIdx] || state.noblemen[0];
+          if (!n) return;
+          animateTo(n.branchObj.mid, '核心纯气：' + n.branch + '山正中 (' + n.branchObj.mid + '°)', n.role === 'year' ? 'jade' : 'gold');
+        });
+
+        document.getElementById('btnJumpWing').addEventListener('click', function () {
+          var n = state.noblemen[state.focusedIdx] || state.noblemen[0];
+          if (!n) return;
+          var deg = normDeg(n.branchObj.mid + 10);
+          animateTo(deg, '穿插余气：' + n.branch + '宫 +10°（兼跨' + n.branchObj.rightHalf + '）', 'amber');
+        });
+
+        document.getElementById('btnJumpCorner').addEventListener('click', function () {
+          var n = state.noblemen[state.focusedIdx] || state.noblemen[0];
+          if (n && n.branchObj.cornerDelta !== null) {
+            var deg = normDeg(n.branchObj.mid + n.branchObj.cornerDelta);
+            animateTo(deg, '四维交界预览：' + n.branch + '宫边缘 (' + deg.toFixed(1) + '°)', 'crimson');
+          } else {
+            var alt = state.noblemen.find(function (item) { return item.branchObj.cornerDelta !== null; });
+            if (alt) {
+              var deg2 = normDeg(alt.branchObj.mid + alt.branchObj.cornerDelta);
+              animateTo(deg2, '四维交界预览：' + alt.branch + '宫边缘 (' + deg2.toFixed(1) + '°)', 'crimson');
+            } else {
+              animateTo(44.5, '四维交界预览：艮中 44.5°', 'crimson');
+            }
+          }
+        });
+
+        // Slider & -5° / +5° Fine-Tune Buttons
+        dom.slider.addEventListener('input', function (e) {
+          if (state.sensorMode === 'sensor') stopRealCompass(false);
+          setManualHeading(parseFloat(e.target.value));
+        });
+
+        document.getElementById('btnNudgeLeft').addEventListener('click', function () {
+          if (state.sensorMode === 'sensor') stopRealCompass(false);
+          setManualHeading(state.targetHeading - 5);
+        });
+        document.getElementById('btnNudgeRight').addEventListener('click', function () {
+          if (state.sensorMode === 'sensor') stopRealCompass(false);
+          setManualHeading(state.targetHeading + 5);
+        });
+
+        // Layer 2 Interactive Horizontal Drag (Pointer Events + Touch/Mouse safe)
+        var dragZone = document.getElementById('dragViewport');
+        dragZone.addEventListener('pointerdown', function (e) {
+          if (state.sensorMode === 'sensor') return;
+          state.dragging = true;
+          state.animating = false;
+          state.lastDragX = e.clientX;
+          try { dragZone.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+        dragZone.addEventListener('pointermove', function (e) {
+          if (!state.dragging || state.sensorMode === 'sensor') return;
+          var dx = e.clientX - state.lastDragX;
+          state.lastDragX = e.clientX;
+          setManualHeading(state.targetHeading - dx * 0.28);
+        });
+        function endDrag() { state.dragging = false; }
+        dragZone.addEventListener('pointerup', endDrag);
+        dragZone.addEventListener('pointercancel', endDrag);
+
+        // Keyboard Arrow Support
+        window.addEventListener('keydown', function (e) {
+          if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+          if (e.key === 'ArrowLeft') {
+            if (state.sensorMode === 'sensor') stopRealCompass(false);
+            setManualHeading(state.targetHeading - 2.5);
+          } else if (e.key === 'ArrowRight') {
+            if (state.sensorMode === 'sensor') stopRealCompass(false);
+            setManualHeading(state.targetHeading + 2.5);
+          }
+        });
+
+        window.addEventListener('resize', resizeAllCanvases);
+      }
+
+      // Async lunar-javascript callback hook
+      window.__onLunarLoaded = function () {
+        try { syncAllUI(); } catch (e) {}
+      };
+
+      // =========================================================================
+      // 16. INSTANT BOOTSTRAP (ZERO BLOCKING NETWORK DEPENDENCIES)
+      // =========================================================================
+      function boot() {
+        populateStaticUI();
+        bindAllEvents();
+        resizeAllCanvases();
+        syncAllUI();
+        updateHardwareUI();
+        setPanelMode('compact', true);
+
+        var first = state.noblemen[0];
+        var initDeg = first ? first.branchObj.mid : 30;
+        state.displayHeading = initDeg;
+        resetFilterTo(initDeg);
+        setManualHeading(initDeg);
+
+        requestAnimationFrame(tick);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+      } else {
+        boot();
+      }
+    })();
+  </script>
+</body>
+</html>
