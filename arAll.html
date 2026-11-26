@@ -1,0 +1,2979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#060a0f">
+<title>玄枢 AR · 五层实景七政择日罗盘</title>
+<style>
+:root{
+  --bg:#060a0f;
+  --panel:rgba(10,16,23,.84);
+  --panel-solid:#0b1118;
+  --border:rgba(218,179,96,.26);
+  --border-soft:rgba(255,255,255,.11);
+  --text:#eef2f6;
+  --muted:#8a99ad;
+  --gold:#f5c451;
+  --orange:#ff9436;
+  --jade:#34d399;
+  --crimson:#ff4d5a;
+  --purple-gold:#d98aff;
+  --cyan:#38bdf8;
+  --serif:"Songti SC","Noto Serif SC","STSong","PMingLiU",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{
+  width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:var(--sans);user-select:none;-webkit-user-select:none;
+}
+#app{position:relative;width:100vw;height:100dvh;overflow:hidden;background:var(--bg);}
+
+/* ===== Z-0: Camera & Cyber-Zen Radar Backdrop ===== */
+.backdrop-layer{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+#camVideo{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .35s ease;background:#000;
+}
+#camVideo.active{opacity:1;}
+.cyber-radar{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(circle at 50% 41%, rgba(52,211,153,.09) 0%, rgba(12,24,36,.42) 42%, rgba(6,10,15,.96) 80%),
+    repeating-linear-gradient(0deg, rgba(245,196,81,.045) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(245,196,81,.045) 0 1px, transparent 1px 44px);
+  transition:opacity .35s ease;
+}
+.cyber-radar.dimmed{opacity:.20;}
+.radar-rings{
+  position:absolute;left:50%;top:41%;width:min(86vw,440px);height:min(86vw,440px);
+  transform:translate(-50%,-50%);opacity:.34;
+}
+.radar-sweep{transform-origin:150px 150px;animation:radarSpin 12s linear infinite;}
+@keyframes radarSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+
+/* ===== Z-10: Touch Drag Simulation Layer ===== */
+#dragLayer{position:absolute;inset:0;z-index:10;touch-action:none;cursor:grab;}
+#dragLayer:active{cursor:grabbing;}
+
+/* ===== Z-20: AR HUD Layer ===== */
+.hud-layer{position:absolute;inset:0;z-index:20;pointer-events:none;}
+.ar-reticle{
+  position:absolute;left:50%;top:41%;transform:translate(-50%,-50%);
+  width:118px;height:118px;display:flex;align-items:center;justify-content:center;
+}
+.ar-reticle-ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:1px solid rgba(245,196,81,.26);
+  box-shadow:inset 0 0 22px rgba(245,196,81,.06);
+  transition:border-color .2s, box-shadow .2s;
+}
+.ar-reticle.st-golden .ar-reticle-ring{
+  border-color:rgba(217,138,255,.9);
+  box-shadow:0 0 26px rgba(217,138,255,.38), inset 0 0 24px rgba(245,196,81,.28);
+}
+.ar-reticle.st-good .ar-reticle-ring{
+  border-color:rgba(245,196,81,.8);
+  box-shadow:0 0 18px rgba(245,196,81,.26);
+}
+.ar-reticle.st-weakened .ar-reticle-ring{
+  border-color:rgba(148,163,184,.75);
+  border-style:dashed;
+  box-shadow:0 0 16px rgba(148,163,184,.25);
+}
+.ar-reticle.st-conflict .ar-reticle-ring{
+  border-color:rgba(255,148,54,.88);
+  box-shadow:0 0 22px rgba(255,77,90,.36), inset 0 0 18px rgba(245,196,81,.22);
+}
+.ar-reticle.st-bad .ar-reticle-ring{
+  border-color:rgba(255,77,90,.88);
+  box-shadow:0 0 22px rgba(255,77,90,.38);
+}
+.ar-cross-h{position:absolute;width:32px;height:1px;background:rgba(255,77,90,.68);}
+.ar-cross-v{position:absolute;width:1px;height:32px;background:rgba(255,77,90,.68);}
+.ar-dot{width:5px;height:5px;border-radius:50%;background:var(--crimson);box-shadow:0 0 8px var(--crimson);}
+
+/* AR Real-Time Reticle Callout (Camera Live Decision HUD) */
+.ar-callout{
+  position:absolute;left:50%;top:calc(41% - 102px);transform:translateX(-50%);
+  width:min(88vw,340px);padding:6px 10px;border-radius:11px;
+  background:rgba(6,11,18,.78);border:1px solid var(--border);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  text-align:center;transition:opacity .18s, border-color .18s;
+  box-shadow:0 6px 20px rgba(0,0,0,.42);
+}
+.ar-callout.hidden{opacity:0;pointer-events:none;}
+.ar-callout.st-golden{border-color:rgba(217,138,255,.8);background:rgba(24,10,36,.82);}
+.ar-callout.st-good{border-color:rgba(245,196,81,.7);}
+.ar-callout.st-weakened{border-color:rgba(148,163,184,.65);}
+.ar-callout.st-conflict{border-color:rgba(255,148,54,.82);background:rgba(32,14,10,.82);}
+.ar-callout.st-bad{border-color:rgba(255,77,90,.82);background:rgba(36,8,14,.82);}
+.arc-top{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
+.arc-loc{font-family:var(--serif);font-size:13px;font-weight:700;color:var(--gold);}
+.arc-tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;}
+.arc-msg{font-size:11px;color:#e2e8f0;margin-top:3px;line-height:1.38;}
+
+/* Left / Right Clean-Good Steering Arrows */
+.steer-btn{
+  position:absolute;top:41%;transform:translateY(-50%);z-index:25;pointer-events:auto;
+  padding:5px 9px;border-radius:999px;font-size:10.5px;font-weight:700;
+  background:rgba(10,20,26,.82);border:1px solid rgba(245,196,81,.55);color:var(--gold);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  cursor:pointer;display:none;align-items:center;gap:4px;
+  box-shadow:0 4px 14px rgba(0,0,0,.45);
+}
+.steer-btn.show{display:inline-flex;}
+.steer-btn:active{transform:translateY(-50%) scale(.95);}
+#steerLeft{left:8px;}
+#steerRight{right:8px;}
+
+/* Four-Diagonal Red Dashed Line */
+#diagWarningLine{
+  position:absolute;left:50%;top:118px;bottom:230px;width:0;
+  border-left:2px dashed rgba(255,77,90,.92);
+  box-shadow:0 0 14px rgba(255,77,90,.7);
+  opacity:0;transition:opacity .16s ease;
+}
+#diagWarningLine.show{opacity:1;}
+#diagWarningPill{
+  position:absolute;left:50%;top:calc(41% + 70px);transform:translateX(-50%);
+  padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.08em;
+  background:rgba(160,20,32,.9);color:#fff;border:1px solid rgba(255,130,140,.75);
+  opacity:0;transition:opacity .16s ease;white-space:nowrap;
+}
+#diagWarningPill.show{opacity:1;}
+
+/* ===== Z-30: Interactive Chrome ===== */
+.chrome-top{
+  position:absolute;left:0;right:0;top:0;z-index:30;
+  padding-top:var(--sat);
+  background:linear-gradient(180deg, rgba(6,10,15,.94) 0%, rgba(6,10,15,.72) 76%, rgba(6,10,15,0) 100%);
+  pointer-events:none;
+}
+.chrome-top > *{pointer-events:auto;}
+
+#httpsNotice{
+  display:none;align-items:center;justify-content:space-between;gap:8px;
+  padding:5px 12px;font-size:11px;color:#fde68a;
+  background:rgba(146,64,14,.88);border-bottom:1px solid rgba(245,196,81,.35);
+}
+#httpsNotice.show{display:flex;}
+#httpsNotice button{background:none;border:none;color:#fde68a;font-size:14px;cursor:pointer;padding:0 4px;}
+
+.top-bar{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px 4px;}
+.brand-pill{
+  display:flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;
+  background:rgba(15,23,34,.84);border:1px solid var(--border);font-size:12px;cursor:pointer;
+}
+.brand-glyph{font-family:var(--serif);color:var(--gold);font-weight:700;font-size:13px;}
+.ctx-badge{font-size:11px;color:var(--text);font-family:var(--serif);letter-spacing:.03em;}
+.ctx-sub{font-size:10px;color:var(--muted);}
+
+.top-actions{display:flex;align-items:center;gap:5px;}
+.icon-btn{
+  height:29px;padding:0 8px;border-radius:999px;border:1px solid var(--border-soft);
+  background:rgba(15,23,34,.82);color:var(--text);font-size:11px;
+  display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+}
+.icon-btn:active{transform:scale(.96);}
+.icon-btn.on{border-color:var(--gold);color:var(--gold);background:rgba(245,196,81,.13);}
+.sensor-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);}
+.sensor-dot.live{background:var(--jade);box-shadow:0 0 6px var(--jade);}
+.sensor-dot.sim{background:var(--orange);box-shadow:0 0 6px var(--orange);}
+
+/* Dual-Row AR Horizon Ruler */
+.horizon-wrap{
+  position:relative;height:62px;margin:2px 8px 4px;
+  border-radius:10px;overflow:hidden;
+  background:rgba(8,13,20,.78);border:1px solid var(--border);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  pointer-events:none;
+}
+.horizon-row{position:relative;width:100%;overflow:hidden;}
+.horizon-row.row-b12{height:26px;border-bottom:1px solid rgba(255,255,255,.08);}
+.horizon-row.row-m24{height:34px;}
+.h-tick{
+  position:absolute;top:0;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;white-space:nowrap;
+}
+.row-b12 .h-tick{height:26px;font-family:var(--serif);font-size:11.5px;color:#b8c7d9;}
+.row-m24 .h-tick{height:34px;font-family:var(--serif);font-size:12.5px;color:var(--text);font-weight:600;}
+.h-tick .h-line{width:1px;height:4px;background:rgba(255,255,255,.28);margin-bottom:1px;}
+.h-tick.diag .h-line{width:2px;height:6px;background:var(--crimson);}
+.h-tick.diag .h-lbl{color:#ff8a93;}
+.h-dots{display:flex;gap:2px;margin-top:1px;height:4px;align-items:center;}
+.h-dot{width:4px;height:4px;border-radius:50%;}
+.horizon-center-pin{
+  position:absolute;left:50%;top:0;bottom:0;width:2px;transform:translateX(-50%);
+  background:linear-gradient(180deg, var(--crimson), rgba(255,77,90,.28));z-index:3;
+}
+.horizon-deg-chip{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  padding:1px 6px;border-radius:6px;font-family:var(--mono);font-size:10px;font-weight:700;
+  background:rgba(6,10,15,.92);color:var(--gold);border:1px solid rgba(255,77,90,.7);
+  z-index:4;font-variant-numeric:tabular-nums;
+}
+
+/* Mode, Scene Preset & 5-Ring Strip */
+.mode-strip{
+  display:flex;align-items:center;gap:5px;padding:2px 10px 4px;
+  overflow-x:auto;scrollbar-width:none;
+}
+.mode-strip::-webkit-scrollbar{display:none;}
+.mode-chip{
+  flex:0 0 auto;padding:4px 9px;border-radius:999px;font-size:11px;
+  background:rgba(12,18,26,.82);border:1px solid var(--border-soft);color:var(--muted);
+  cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;
+}
+.mode-chip .sw{width:7px;height:7px;border-radius:50%;}
+.mode-chip.on{color:var(--text);border-color:var(--gold);background:rgba(245,196,81,.16);}
+.mode-chip.scene-btn.on{border-color:var(--jade);color:#a7f3d0;background:rgba(52,211,153,.18);}
+.mode-chip.layer-entry{border-color:rgba(56,189,248,.45);color:#7dd3fc;}
+.mode-chip.ios-btn{border-color:var(--jade);color:#a7f3d0;background:rgba(16,185,129,.22);font-weight:600;display:none;}
+.mode-chip.ios-btn.show{display:inline-flex;}
+
+/* Natal × Transit Global Clash Alert Banner */
+#clashBanner{
+  display:none;margin:2px 10px 0;padding:4px 10px;border-radius:8px;
+  background:rgba(153,27,27,.84);border:1px solid rgba(252,165,165,.55);
+  color:#fee2e2;font-size:11px;align-items:center;justify-content:space-between;gap:8px;
+  cursor:pointer;
+}
+#clashBanner.show{display:flex;}
+
+/* ===== Floating Collapsible Status Capsule (Above Compass) ===== */
+.capsule-anchor{
+  position:absolute;left:10px;right:10px;bottom:calc(232px + var(--sab));z-index:30;
+  display:flex;flex-direction:column;align-items:center;pointer-events:none;
+  transition:bottom .22s ease;
+}
+body.compass-big .capsule-anchor{bottom:calc(296px + var(--sab));}
+.capsule-card{
+  width:100%;max-width:420px;pointer-events:auto;
+  border-radius:14px;background:var(--panel);border:1px solid var(--border);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  box-shadow:0 8px 28px rgba(0,0,0,.48);overflow:hidden;transition:border-color .2s;
+}
+.capsule-card.st-golden{border-color:rgba(217,138,255,.8);box-shadow:0 0 22px rgba(217,138,255,.24);}
+.capsule-card.st-conflict{border-color:rgba(255,148,54,.84);box-shadow:0 0 22px rgba(255,77,90,.24);}
+.capsule-card.st-bad{border-color:rgba(255,77,90,.82);}
+.capsule-card.st-weakened{border-color:rgba(148,163,184,.72);}
+.capsule-card.st-good{border-color:rgba(245,196,81,.68);}
+.capsule-card.hidden{display:none;}
+
+.cap-head{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 10px;cursor:pointer;}
+.cap-left{display:flex;align-items:center;gap:6px;min-width:0;}
+.cap-shan{font-family:var(--serif);font-size:14.5px;font-weight:700;color:var(--gold);white-space:nowrap;}
+.cap-meta{font-size:10.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap;}
+.cap-verdict{
+  font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px;
+}
+.v-golden{background:linear-gradient(90deg,rgba(217,138,255,.32),rgba(245,196,81,.32));color:#f5d0fe;border:1px solid rgba(217,138,255,.6);}
+.v-good{background:rgba(245,196,81,.18);color:var(--gold);border:1px solid rgba(245,196,81,.42);}
+.v-weakened{background:rgba(148,163,184,.2);color:#e2e8f0;border:1px dashed rgba(148,163,184,.6);}
+.v-conflict{background:linear-gradient(90deg,rgba(245,196,81,.24),rgba(255,77,90,.28));color:#fed7aa;border:1px solid rgba(255,148,54,.58);}
+.v-bad{background:rgba(255,77,90,.22);color:#fecaca;border:1px solid rgba(255,77,90,.55);}
+.v-neutral{background:rgba(148,163,184,.16);color:#cbd5e1;border:1px solid rgba(148,163,184,.3);}
+
+.cap-ctrls{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.cap-btn{
+  width:23px;height:23px;border-radius:50%;border:1px solid var(--border-soft);
+  background:rgba(255,255,255,.06);color:var(--muted);font-size:12px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.cap-body{display:none;padding:0 10px 10px;border-top:1px solid rgba(255,255,255,.08);max-height:36dvh;overflow-y:auto;}
+.capsule-card.expanded .cap-body{display:block;}
+
+.zone-bar-wrap{margin-top:8px;}
+.zone-bar-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:4px;font-family:var(--serif);}
+.zone-bar-labels .active-z{color:var(--gold);font-weight:700;}
+.zone-track{
+  position:relative;height:10px;border-radius:6px;overflow:hidden;
+  display:flex;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+}
+.zone-seg-l{width:25%;background:rgba(56,189,248,.16);border-right:1px dashed rgba(255,255,255,.25);}
+.zone-seg-c{width:50%;background:rgba(245,196,81,.22);border-right:1px dashed rgba(255,255,255,.25);}
+.zone-seg-r{width:25%;background:rgba(56,189,248,.16);}
+.zone-needle{
+  position:absolute;top:-2px;bottom:-2px;width:3px;background:var(--crimson);
+  box-shadow:0 0 8px var(--crimson);transform:translateX(-50%);transition:left .06s linear;
+}
+.cap-advice{
+  margin-top:8px;padding:6px 8px;border-radius:8px;font-size:11.5px;line-height:1.5;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#dbe4ef;
+}
+.cap-hits{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
+.hit-tag{
+  font-size:10.5px;padding:2px 7px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+}
+.hit-tag .ht-dot{width:6px;height:6px;border-radius:50%;}
+.cap-jumps-title{font-size:10px;color:var(--muted);margin-top:8px;margin-bottom:4px;letter-spacing:.08em;}
+.cap-jumps{display:flex;flex-wrap:wrap;gap:5px;}
+.jump-chip{
+  font-size:10.5px;padding:3px 8px;border-radius:999px;cursor:pointer;
+  background:rgba(245,196,81,.10);border:1px solid rgba(245,196,81,.32);color:var(--text);
+  display:inline-flex;align-items:center;gap:4px;
+}
+.jump-chip:active{transform:scale(.95);}
+
+#restoreCapsuleBtn{
+  display:none;pointer-events:auto;padding:4px 12px;border-radius:999px;font-size:11px;color:var(--gold);
+  background:rgba(10,16,23,.84);border:1px solid var(--border);cursor:pointer;
+}
+#restoreCapsuleBtn.show{display:inline-flex;align-items:center;gap:5px;}
+
+/* ===== Bottom 5-Ring Concentric SVG Compass Dock ===== */
+.compass-dock{
+  position:absolute;left:0;right:0;bottom:0;z-index:30;
+  padding:4px 12px calc(7px + var(--sab));
+  display:flex;flex-direction:column;align-items:center;
+  background:linear-gradient(0deg, rgba(6,10,15,.96) 0%, rgba(6,10,15,.76) 72%, rgba(6,10,15,0) 100%);
+  pointer-events:none;
+}
+.compass-stage{
+  position:relative;width:206px;height:206px;pointer-events:auto;
+  display:flex;align-items:center;justify-content:center;
+  transition:width .22s ease, height .22s ease;
+}
+body.compass-big .compass-stage{width:270px;height:270px;}
+#compassSvg{width:100%;height:100%;display:block;filter:drop-shadow(0 6px 20px rgba(0,0,0,.68));}
+.compass-size-btn{
+  position:absolute;right:-6px;top:2px;width:24px;height:24px;border-radius:50%;
+  border:1px solid var(--border);background:rgba(10,16,23,.88);color:var(--gold);
+  font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.compass-sim-bar{
+  width:100%;max-width:348px;margin-top:3px;pointer-events:auto;
+  display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted);
+}
+.compass-sim-bar input[type=range]{flex:1;accent-color:var(--gold);height:4px;cursor:pointer;}
+.sim-pill-btn{
+  padding:2px 8px;border-radius:999px;font-size:10px;cursor:pointer;
+  border:1px solid rgba(52,211,153,.45);background:rgba(52,211,153,.14);color:#a7f3d0;
+  white-space:nowrap;display:none;
+}
+.sim-pill-btn.show{display:inline-block;}
+
+/* ===== Z-50: Modals & Drawers ===== */
+.modal-mask{
+  position:fixed;inset:0;z-index:50;display:none;align-items:flex-end;justify-content:center;
+  background:rgba(2,5,9,.74);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+}
+.modal-mask.show{display:flex;}
+@media(min-width:600px){.modal-mask{align-items:center;}}
+.sheet{
+  width:100%;max-width:540px;max-height:88dvh;display:flex;flex-direction:column;
+  background:var(--panel-solid);border:1px solid var(--border);
+  border-radius:18px 18px 0 0;overflow:hidden;box-shadow:0 -10px 40px rgba(0,0,0,.68);
+}
+@media(min-width:600px){.sheet{border-radius:16px;}}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border-soft);}
+.sheet-title{font-family:var(--serif);font-size:16px;font-weight:700;color:var(--gold);letter-spacing:.08em;}
+.sheet-close{
+  width:28px;height:28px;border-radius:50%;border:1px solid var(--border-soft);
+  background:rgba(255,255,255,.05);color:var(--text);font-size:18px;cursor:pointer;
+}
+.sheet-tabs{display:flex;gap:6px;padding:8px 14px 0;border-bottom:1px solid var(--border-soft);}
+.stab{
+  flex:1;padding:8px 6px;font-size:12.5px;text-align:center;cursor:pointer;
+  color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;
+}
+.stab.on{color:var(--gold);border-bottom-color:var(--gold);font-weight:600;}
+.sheet-body{padding:14px 16px calc(18px + var(--sab));overflow-y:auto;flex:1;}
+
+.sec-label{
+  font-size:11px;color:var(--gold);letter-spacing:.1em;margin:12px 0 7px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+.sec-label:first-child{margin-top:0;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;}
+.field input,.field select{
+  width:100%;padding:8px 10px;border-radius:8px;font-size:13px;
+  background:rgba(255,255,255,.06);border:1px solid var(--border-soft);color:var(--text);font-family:var(--sans);
+}
+.stem-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}
+.stem-btn{
+  padding:7px 0;border-radius:8px;border:1px solid var(--border-soft);
+  background:rgba(255,255,255,.04);color:var(--text);font-family:var(--serif);
+  font-size:14px;font-weight:700;cursor:pointer;
+}
+.stem-btn.on{background:rgba(245,196,81,.22);border-color:var(--gold);color:var(--gold);}
+.seg-group{display:flex;gap:6px;flex-wrap:wrap;}
+.seg-btn{
+  flex:1;min-width:86px;padding:7px 8px;border-radius:8px;font-size:11.5px;
+  border:1px solid var(--border-soft);background:rgba(255,255,255,.04);color:var(--muted);cursor:pointer;
+}
+.seg-btn.on{background:rgba(245,196,81,.18);border-color:var(--gold);color:var(--gold);font-weight:600;}
+
+.pillars-box{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+  padding:10px;border-radius:10px;background:rgba(255,255,255,.035);
+  border:1px solid var(--border-soft);text-align:center;margin-bottom:10px;
+}
+.p-item .p-lbl{font-size:10px;color:var(--muted);}
+.p-item .p-val{font-family:var(--serif);font-size:18px;font-weight:700;color:var(--gold);margin-top:2px;}
+.meta-strip{
+  font-size:11.5px;color:#cbd5e1;padding:7px 10px;border-radius:8px;
+  background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.24);
+  margin-bottom:10px;line-height:1.5;
+}
+.clash-box{
+  font-size:11.5px;padding:8px 10px;border-radius:8px;margin-bottom:10px;line-height:1.55;
+  background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.1);
+}
+.clash-box.has-bad{background:rgba(153,27,27,.22);border-color:rgba(248,113,113,.45);}
+.clash-box .cb-bad{color:#fca5a5;font-weight:600;}
+.clash-box .cb-good{color:#86efac;}
+
+.shichen-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;}
+.sc-card{
+  padding:6px 4px;border-radius:8px;border:1px solid var(--border-soft);
+  background:rgba(255,255,255,.04);text-align:center;cursor:pointer;
+}
+.sc-card.on{background:rgba(52,211,153,.18);border-color:var(--jade);}
+.sc-card .sc-z{font-family:var(--serif);font-size:13px;font-weight:700;color:var(--text);}
+.sc-card .sc-gz{font-family:var(--serif);font-size:11px;color:var(--gold);}
+.sc-card .sc-t{font-size:9.5px;color:var(--muted);font-family:var(--mono);}
+
+.sha-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px;}
+.sha-table th{
+  text-align:left;padding:5px 6px;color:var(--gold);font-weight:600;
+  border-bottom:1px solid var(--border);background:rgba(255,255,255,.03);
+}
+.sha-table td{padding:5px 6px;border-bottom:1px solid rgba(255,255,255,.06);color:#dbe4ef;}
+.pol-good{color:var(--jade);}
+.pol-bad{color:#ff8a93;}
+.pol-neutral{color:#94a3b8;}
+
+/* 5-Ring Master Cards & Plugin Switches in Layer Manager */
+.ring-master-card{
+  padding:10px 11px;border-radius:12px;margin-bottom:12px;
+  background:rgba(255,255,255,.03);border:1px solid var(--border-soft);
+}
+.ring-master-card.ring-off{opacity:.58;}
+.rm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.rm-title-wrap{min-width:0;}
+.rm-title{font-size:13px;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:6px;}
+.rm-badge{font-size:9.5px;padding:1px 6px;border-radius:999px;background:rgba(245,196,81,.15);color:var(--gold);font-family:var(--mono);}
+.rm-desc{font-size:10.5px;color:var(--muted);margin-top:2px;}
+.rm-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.lg-batch{
+  font-size:10px;padding:3px 7px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--border-soft);background:rgba(255,255,255,.05);color:var(--muted);
+}
+.layer-row{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:7px 9px;border-radius:9px;margin-top:5px;
+  background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);
+}
+.lr-info{min-width:0;flex:1;}
+.lr-name{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;}
+.lr-swatch{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.lr-unit{font-size:9.5px;padding:1px 5px;border-radius:4px;font-family:var(--mono);background:rgba(255,255,255,.08);color:var(--muted);}
+.lr-hits{font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.toggle-sw{
+  width:38px;height:21px;border-radius:12px;border:1px solid var(--border-soft);
+  background:rgba(255,255,255,.10);position:relative;cursor:pointer;flex-shrink:0;transition:background .16s;
+}
+.toggle-sw::after{
+  content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+  background:#e2e8f0;transition:left .16s;
+}
+.toggle-sw.on{background:rgba(52,211,153,.72);border-color:var(--jade);}
+.toggle-sw.on::after{left:19px;background:#fff;}
+
+/* Sensor Diagnostics */
+.diag-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;}
+.diag-card{padding:9px 10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--border-soft);}
+.diag-k{font-size:10.5px;color:var(--muted);}
+.diag-v{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--gold);margin-top:3px;}
+.ch-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px;}
+.ch-btn{
+  padding:8px;border-radius:8px;font-size:11.5px;text-align:center;cursor:pointer;
+  border:1px solid var(--border-soft);background:rgba(255,255,255,.05);color:var(--text);
+}
+.ch-btn.on{border-color:var(--jade);background:rgba(52,211,153,.18);color:#a7f3d0;font-weight:600;}
+.ch-btn.full{grid-column:span 2;}
+.action-btn{
+  width:100%;padding:9px 12px;border-radius:10px;font-size:13px;font-weight:600;
+  border:1px solid var(--gold);background:rgba(245,196,81,.16);color:var(--gold);cursor:pointer;margin-top:8px;
+}
+.small-note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Z-0: Camera & Cyber-Zen Backdrop -->
+  <div class="backdrop-layer">
+    <video id="camVideo" playsinline autoplay muted></video>
+    <div id="cyberRadar" class="cyber-radar">
+      <svg class="radar-rings" viewBox="0 0 300 300" fill="none">
+        <circle cx="150" cy="150" r="142" stroke="rgba(245,196,81,.35)" stroke-dasharray="3 5"/>
+        <circle cx="150" cy="150" r="102" stroke="rgba(52,211,153,.35)"/>
+        <circle cx="150" cy="150" r="62" stroke="rgba(245,196,81,.28)" stroke-dasharray="2 4"/>
+        <line x1="150" y1="8" x2="150" y2="292" stroke="rgba(245,196,81,.18)"/>
+        <line x1="8" y1="150" x2="292" y2="150" stroke="rgba(245,196,81,.18)"/>
+        <path class="radar-sweep" d="M150 150 L150 8 A142 142 0 0 1 250 50 Z" fill="url(#sweepGrad)"/>
+        <defs>
+          <linearGradient id="sweepGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="rgba(52,211,153,.28)"/>
+            <stop offset="100%" stop-color="rgba(52,211,153,0)"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Z-10: Touch Drag Capture -->
+  <div id="dragLayer" aria-label="拖拽旋转罗盘视角"></div>
+
+  <!-- Z-20: AR HUD & Camera Real-Time Decision Callout -->
+  <div class="hud-layer">
+    <div id="diagWarningLine"></div>
+    <div id="diagWarningPill">⚠ 四维空亡中线 · 忌立向</div>
+
+    <div id="arCallout" class="ar-callout st-neutral">
+      <div class="arc-top">
+        <span class="arc-loc" id="arcLoc">子山 · 坎宫</span>
+        <span class="arc-tag v-neutral" id="arcTag">平宫</span>
+      </div>
+      <div class="arc-msg" id="arcMsg">转动手机即可实时穿插本命、时空神煞与七政天星</div>
+    </div>
+
+    <div id="arReticle" class="ar-reticle">
+      <div class="ar-reticle-ring"></div>
+      <div class="ar-cross-h"></div>
+      <div class="ar-cross-v"></div>
+      <div class="ar-dot"></div>
+    </div>
+  </div>
+
+  <!-- Left/Right Clean-Good Steering Arrows -->
+  <button id="steerLeft" class="steer-btn">◀ 净吉</button>
+  <button id="steerRight" class="steer-btn">净吉 ▶</button>
+
+  <!-- Z-30: Top Chrome -->
+  <div class="chrome-top">
+    <div id="httpsNotice">
+      <span>当前非 HTTPS 安全环境，摄像头与真机陀螺仪可能受限，建议部署至 GitHub Pages / HTTPS 运行。</span>
+      <button id="dismissHttps" aria-label="关闭提醒">×</button>
+    </div>
+
+    <div class="top-bar">
+      <div class="brand-pill" id="openSetupBtn" title="本命与时空排盘">
+        <span class="brand-glyph">玄枢</span>
+        <div>
+          <div class="ctx-badge" id="topCtxBadge">日干甲 · 丙午年</div>
+          <div class="ctx-sub" id="topCtxSub">点此排盘 / 择日</div>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button class="icon-btn" id="camToggleBtn" title="切换实景摄像头">📷 实景</button>
+        <button class="icon-btn" id="diagBtn" title="传感器诊断与校准">
+          <span class="sensor-dot" id="sensorDot"></span>
+          <span id="sensorShort">检测中</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Dual-Row AR Horizon Ruler -->
+    <div class="horizon-wrap">
+      <div class="horizon-row row-b12" id="horizonB12"></div>
+      <div class="horizon-row row-m24" id="horizonM24"></div>
+      <div class="horizon-center-pin"></div>
+      <div class="horizon-deg-chip" id="horizonDeg">000.0°</div>
+    </div>
+
+    <!-- Mode, Scene Presets & 5-Ring Quick Strip -->
+    <div class="mode-strip" id="modeStrip">
+      <button class="mode-chip ios-btn" id="iosPermBtn">🧭 授权陀螺仪</button>
+      <button class="mode-chip scene-btn on" data-scene="daily">✦ 日常纳气</button>
+      <button class="mode-chip scene-btn" data-scene="build">⚒ 动土修造</button>
+      <button class="mode-chip layer-entry" id="openLayersBtn">◎ 五层管理 (<span id="activeLayerCount">0</span>)</button>
+      <button class="mode-chip" id="arHudToggleChip">AR直报:开</button>
+      <button class="mode-chip" data-mode="all"><span class="sw" style="background:var(--purple-gold)"></span>三星</button>
+      <button class="mode-chip" data-mode="guiren"><span class="sw" style="background:var(--gold)"></span>贵人</button>
+      <button class="mode-chip" data-mode="lu"><span class="sw" style="background:var(--orange)"></span>禄位</button>
+      <button class="mode-chip" data-mode="wenchang"><span class="sw" style="background:var(--jade)"></span>文昌</button>
+      <button class="mode-chip" id="spanToggleChip">30°穿插</button>
+    </div>
+
+    <!-- Natal × Transit Global Clash Banner -->
+    <div id="clashBanner" title="点击查看时空相主详情">
+      <span id="clashBannerText">⚠ 当前时空与本命存在冲克</span>
+      <span style="font-size:10px;opacity:.85;white-space:nowrap;">详情 ▸</span>
+    </div>
+  </div>
+
+  <!-- Z-30: Floating Collapsible Status Capsule -->
+  <div class="capsule-anchor">
+    <div class="capsule-card" id="statusCapsule">
+      <div class="cap-head" id="capHeadToggle">
+        <div class="cap-left">
+          <span class="cap-shan" id="capShan">子山 · 坎</span>
+          <span class="cap-meta" id="capMeta">000.0°</span>
+          <span class="cap-verdict v-neutral" id="capVerdict">平宫</span>
+        </div>
+        <div class="cap-ctrls">
+          <button class="cap-btn" id="capExpandBtn" title="展开/折叠详情">▾</button>
+          <button class="cap-btn" id="capHideBtn" title="隐藏宫位胶囊">×</button>
+        </div>
+      </div>
+      <div class="cap-body">
+        <div class="zone-bar-wrap">
+          <div class="zone-bar-labels">
+            <span id="zLblLeft">左半山 壬</span>
+            <span id="zLblCore" class="active-z">本山核心 子</span>
+            <span id="zLblRight">右半山 癸</span>
+          </div>
+          <div class="zone-track">
+            <div class="zone-seg-l"></div>
+            <div class="zone-seg-c"></div>
+            <div class="zone-seg-r"></div>
+            <div class="zone-needle" id="zoneNeedle" style="left:50%"></div>
+          </div>
+        </div>
+        <div class="cap-advice" id="capAdvice">镜头对准方位即可实时聚合五层穿插状态。</div>
+        <div class="cap-hits" id="capHits"></div>
+        <div class="cap-jumps-title">快捷转向（点击即切换模拟视角直达）</div>
+        <div class="cap-jumps" id="capJumps"></div>
+      </div>
+    </div>
+    <button id="restoreCapsuleBtn">◈ 显示宫位胶囊</button>
+  </div>
+
+  <!-- Z-30: Bottom 5-Ring Concentric SVG Compass -->
+  <div class="compass-dock">
+    <div class="compass-stage">
+      <svg id="compassSvg" viewBox="0 0 360 360"></svg>
+      <button class="compass-size-btn" id="compassSizeBtn" title="放大/缩小五层罗盘">⤢</button>
+    </div>
+    <div class="compass-sim-bar">
+      <span>模拟</span>
+      <input type="range" id="simSlider" min="0" max="359.5" step="0.5" value="0">
+      <span id="simDegVal" style="font-family:var(--mono);width:42px;text-align:right;">0.0°</span>
+      <button class="sim-pill-btn" id="resumeSensorBtn">恢复真机</button>
+    </div>
+  </div>
+
+  <!-- Z-50: Modal 1 — Natal & Transit Setup -->
+  <div class="modal-mask" id="setupModal">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="sheet-title">四柱排盘 · 本命与时空穿插</div>
+        <button class="sheet-close" data-close="setupModal">×</button>
+      </div>
+      <div class="sheet-tabs">
+        <button class="stab on" data-tab="natalTab">本命四柱（第2环）</button>
+        <button class="stab" data-tab="transitTab">时空择日 & 七政（第1/3/4环）</button>
+      </div>
+      <div class="sheet-body">
+        <!-- Tab 1: Natal -->
+        <div id="natalTab">
+          <div class="pillars-box" id="natalPillarsBox"></div>
+          <div class="meta-strip" id="natalEngineMeta">历法引擎：离线内置引擎</div>
+
+          <div class="sec-label"><span>公历生日与时间（自动排盘）</span><span style="color:var(--muted)">纯本地计算</span></div>
+          <div class="form-row">
+            <div class="field">
+              <label>公历出生日期</label>
+              <input type="date" id="natalDateInput" value="1990-06-15">
+            </div>
+            <div class="field">
+              <label>出生时间（可选）</label>
+              <input type="time" id="natalTimeInput" value="12:00">
+            </div>
+          </div>
+
+          <div class="sec-label"><span>隐私快选十天干（覆盖日干）</span></div>
+          <div class="stem-grid" id="quickStemGrid"></div>
+
+          <div class="sec-label"><span>本命吉神参照基准</span></div>
+          <div class="seg-group" id="stemSourceGroup">
+            <button class="seg-btn on" data-val="day">按日干</button>
+            <button class="seg-btn" data-val="year">按年干</button>
+            <button class="seg-btn" data-val="both">年日双显</button>
+          </div>
+
+          <div class="sec-label"><span>天乙贵人口诀流派</span></div>
+          <div class="seg-group" id="guirenMethodGroup">
+            <button class="seg-btn on" data-val="classical">古法昼夜分定</button>
+            <button class="seg-btn" data-val="common">通行口诀</button>
+          </div>
+
+          <div class="sec-label"><span>十二地支扇区宽度模式（第2/3环）</span></div>
+          <div class="seg-group" id="spanModeGroup">
+            <button class="seg-btn on" data-val="30">30° 双层穿插（含左右半山）</button>
+            <button class="seg-btn" data-val="15">15° 严格本山</button>
+          </div>
+        </div>
+
+        <!-- Tab 2: Transit & Celestial -->
+        <div id="transitTab" style="display:none;">
+          <div class="pillars-box" id="transitPillarsBox"></div>
+          <div class="meta-strip" id="transitMetaBox"></div>
+          <div class="clash-box" id="natalTransitClashBox"></div>
+
+          <div class="sec-label">
+            <span>择日公历日期</span>
+            <button class="lg-batch" id="transitNowBtn">回到当前实时</button>
+          </div>
+          <div class="form-row">
+            <div class="field" style="grid-column:span 2;">
+              <input type="date" id="transitDateInput">
+            </div>
+          </div>
+
+          <div class="sec-label"><span>七政天星计算时间基准（第4环 · astronomy-engine）</span></div>
+          <div class="seg-group" id="astroTimeModeGroup">
+            <button class="seg-btn on" data-val="day00">当日 00:00 (UTC+8 通书基准)</button>
+            <button class="seg-btn" data-val="exact">实时 / 所选时辰（精确到时）</button>
+          </div>
+
+          <div class="sec-label"><span>选择十二时辰卡片</span></div>
+          <div class="shichen-grid" id="shichenGrid"></div>
+
+          <div class="sec-label"><span>七政天星临 24 山速查</span><span id="astroStatusLbl" style="color:var(--muted)">加载中</span></div>
+          <table class="sha-table" id="astroTable"></table>
+
+          <div class="sec-label"><span>当辰时空神煞落位速查</span></div>
+          <table class="sha-table" id="transitShaTable"></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Z-50: Modal 2 — 5-Ring & Plugin Layer Manager -->
+  <div class="modal-mask" id="layersModal">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="sheet-title">五层罗盘与神煞插件中心</div>
+        <button class="sheet-close" data-close="layersModal">×</button>
+      </div>
+      <div class="sheet-body" id="layersBody"></div>
+    </div>
+  </div>
+
+  <!-- Z-50: Modal 3 — Sensor Diagnostics & Calibration -->
+  <div class="modal-mask" id="diagModal">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="sheet-title">传感器诊断与磁偏校准</div>
+        <button class="sheet-close" data-close="diagModal">×</button>
+      </div>
+      <div class="sheet-body">
+        <div class="diag-grid">
+          <div class="diag-card">
+            <div class="diag-k">当前活跃通道</div>
+            <div class="diag-v" id="dSource" style="font-size:12.5px;">--</div>
+          </div>
+          <div class="diag-card">
+            <div class="diag-k">采样频率 (Hz)</div>
+            <div class="diag-v" id="dHz">0.0 Hz</div>
+          </div>
+          <div class="diag-card">
+            <div class="diag-k">倾角矩阵 R22</div>
+            <div class="diag-v" id="dR22">0.000</div>
+          </div>
+          <div class="diag-card">
+            <div class="diag-k">原始角 / 补偿角</div>
+            <div class="diag-v" id="dAngles">0.0° / 0.0°</div>
+          </div>
+        </div>
+
+        <div class="sec-label">
+          <span>磁偏角人工微调（-30° ~ +30°）</span>
+          <span id="offsetValLbl" style="font-family:var(--mono);color:var(--gold)">0.0°</span>
+        </div>
+        <input type="range" id="offsetSlider" min="-30" max="30" step="0.5" value="0" style="width:100%;accent-color:var(--gold);">
+
+        <div class="sec-label"><span>强制测试通道（严格单源互斥切换）</span></div>
+        <div class="ch-grid" id="channelBtns">
+          <button class="ch-btn" data-ch="absSensor">1. AbsoluteOrientation</button>
+          <button class="ch-btn" data-ch="doAbs">2. orientationabsolute</button>
+          <button class="ch-btn" data-ch="doStd">3. deviceorientation</button>
+          <button class="ch-btn" data-ch="webkit">4. webkitCompass</button>
+          <button class="ch-btn full" data-ch="sim">5. 手动模拟模式 (Simulation)</button>
+        </div>
+
+        <button class="action-btn" id="autoWaterfallBtn">↺ 重新运行自动瀑布流检测</button>
+        <div class="small-note" id="diagPlatformNote"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Async Non-Blocking Libraries: lunar-javascript & astronomy-engine -->
+<script async src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.12/lunar.min.js"
+  onload="window.__onLunarLoaded && window.__onLunarLoaded()"
+  onerror="window.__onLunarError && window.__onLunarError()"></script>
+<script async src="https://cdn.jsdelivr.net/npm/astronomy-engine/astronomy.browser.js"
+  onload="window.__onAstroLoaded && window.__onAstroLoaded()"
+  onerror="window.__onAstroError && window.__onAstroError()"></script>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================================
+ * MODULE 0: SAFE STORAGE & MATH UTILITIES
+ * ========================================================================== */
+const SafeStore = {
+  get(key, fallback){
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch (_) { return fallback; }
+  },
+  set(key, val){
+    try { window.localStorage.setItem(key, JSON.stringify(val)); } catch (_) {}
+  }
+};
+
+function normDeg(d){ return ((d % 360) + 360) % 360; }
+function angDiff(target, ref){
+  let d = (target - ref + 540) % 360 - 180;
+  return d < -180 ? d + 360 : d;
+}
+function clamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+function pad2(n){ return String(n).padStart(2, '0'); }
+function fmtDeg(d){ return normDeg(d).toFixed(1).padStart(5, '0') + '°'; }
+
+/* ============================================================================
+ * MODULE 1: METAPHYSICS TABLES & UNIFIED SPACE ENGINE
+ * ========================================================================== */
+const GAN = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+const ZHI = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+const M24 = ['子','癸','丑','艮','寅','甲','卯','乙','辰','巽','巳','丙','午','丁','未','坤','申','庚','酉','辛','戌','乾','亥','壬'];
+const GUA8 = ['坎','艮','震','巽','离','坤','兑','乾'];
+const GUA_ALIAS = {'離':'离','兌':'兑'};
+const DIAG_MIDS = [45, 135, 225, 315];
+const DIAG_NAMES = {45:'艮中线', 135:'巽中线', 225:'坤中线', 315:'乾中线'};
+
+const GAN_WX = {'甲':'木','乙':'木','丙':'火','丁':'火','戊':'土','己':'土','庚':'金','辛':'金','壬':'水','癸':'水'};
+const WX_KE = {'木':'土','土':'水','水':'火','火':'金','金':'木'};
+const CHONG = {'子':'午','丑':'未','寅':'申','卯':'酉','辰':'戌','巳':'亥','午':'子','未':'丑','申':'寅','酉':'卯','戌':'辰','亥':'巳'};
+const SANHE = {'寅':'寅午戌','午':'寅午戌','戌':'寅午戌','申':'申子辰','子':'申子辰','辰':'申子辰','巳':'巳酉丑','酉':'巳酉丑','丑':'巳酉丑','亥':'亥卯未','卯':'亥卯未','未':'亥卯未'};
+const SANSHA = {'申子辰':['巳','午','未'],'寅午戌':['亥','子','丑'],'巳酉丑':['寅','卯','辰'],'亥卯未':['申','酉','戌']};
+const TIANGUAN = {'申子辰':'亥','亥卯未':'寅','寅午戌':'巳','巳酉丑':'申'};
+const DIGUAN = {'子':'辰','丑':'巳','寅':'午','卯':'未','辰':'申','巳':'酉','午':'戌','未':'亥','申':'子','酉':'丑','戌':'寅','亥':'卯'};
+const FEILIAN = {'子':'申','丑':'酉','寅':'戌','卯':'巳','辰':'午','巳':'未','午':'寅','未':'卯','申':'辰','酉':'亥','戌':'子','亥':'丑'};
+const LISHI = {'寅':'巽','卯':'巽','辰':'巽','巳':'坤','午':'坤','未':'坤','申':'乾','酉':'乾','戌':'乾','亥':'艮','子':'艮','丑':'艮'};
+const SHENGQI = {'寅':'子','卯':'丑','辰':'寅','巳':'卯','午':'辰','未':'巳','申':'午','酉':'未','戌':'申','亥':'酉','子':'戌','丑':'亥'};
+const DUTIAN = {'甲':'戊辰己巳','己':'戊辰己巳','乙':'寅卯子丑','庚':'寅卯子丑','丙':'戌亥','辛':'戌亥','丁':'申酉','壬':'申酉','戊':'午未','癸':'午未'};
+const ZHENGYIN = {
+  '甲':['艮','巽'],'己':['艮','巽'],
+  '乙':['乾','兑'],'庚':['乾','兑'],
+  '丙':['坤','坎'],'辛':['坤','坎'],
+  '丁':['丙','午','丁'],'壬':['丙','午','丁'],
+  '戊':['甲','卯','乙'],'癸':['甲','卯','乙']
+};
+const JIANCHU = ['建','除','满','平','定','执','破','危','成','收','开','闭'];
+const HOUR_RANGES = ['23:00–00:59','01:00–02:59','03:00–04:59','05:00–06:59','07:00–08:59','09:00–10:59','11:00–12:59','13:00–14:59','15:00–16:59','17:00–18:59','19:00–20:59','21:00–22:59'];
+
+const LU_TBL = {'甲':'寅','乙':'卯','丙':'巳','丁':'午','戊':'巳','己':'午','庚':'申','辛':'酉','壬':'亥','癸':'子'};
+const WENCHANG_TBL = {'甲':'巳','乙':'午','丙':'申','戊':'申','丁':'酉','己':'酉','庚':'亥','辛':'子','壬':'寅','癸':'卯'};
+const SHI_WENCHANG_TBL = {'子':'戌','丑':'酉','寅':'申','卯':'未','辰':'午','巳':'巳','午':'辰','未':'卯','申':'寅','酉':'丑','戌':'子','亥':'亥'};
+const YIMA_TBL = {'寅':'申','午':'申','戌':'申','申':'寅','子':'寅','辰':'寅','巳':'亥','酉':'亥','丑':'亥','亥':'巳','卯':'巳','未':'巳'};
+
+const GUIREN_CLASSICAL = {
+  '甲':{day:'未',night:'丑'}, '乙':{day:'申',night:'子'},
+  '丙':{day:'酉',night:'亥'}, '丁':{day:'亥',night:'酉'},
+  '戊':{day:'丑',night:'未'}, '己':{day:'子',night:'申'},
+  '庚':{day:'丑',night:'未'}, '辛':{day:'寅',night:'午'},
+  '壬':{day:'卯',night:'巳'}, '癸':{day:'巳',night:'卯'}
+};
+const GUIREN_COMMON = {
+  '甲':{day:'丑',night:'未'}, '戊':{day:'丑',night:'未'}, '庚':{day:'丑',night:'未'},
+  '乙':{day:'子',night:'申'}, '己':{day:'子',night:'申'},
+  '丙':{day:'亥',night:'酉'}, '丁':{day:'亥',night:'酉'},
+  '壬':{day:'卯',night:'巳'}, '癸':{day:'卯',night:'巳'},
+  '辛':{day:'午',night:'寅'}
+};
+
+// Seven Governors Ecliptic Longitude -> 24 Mountains (Exact mapping from ChineseCalander.html)
+const ECLIPTIC_TO_M24 = [
+  {s:0,m:'戌'},{s:15,m:'辛'},{s:30,m:'酉'},{s:45,m:'庚'},
+  {s:60,m:'申'},{s:75,m:'坤'},{s:90,m:'未'},{s:105,m:'丁'},
+  {s:120,m:'午'},{s:135,m:'丙'},{s:150,m:'巳'},{s:165,m:'巽'},
+  {s:180,m:'辰'},{s:195,m:'乙'},{s:210,m:'卯'},{s:225,m:'甲'},
+  {s:240,m:'寅'},{s:255,m:'艮'},{s:270,m:'丑'},{s:285,m:'癸'},
+  {s:300,m:'子'},{s:315,m:'壬'},{s:330,m:'亥'},{s:345,m:'乾'}
+];
+
+const RING_DEFS = [
+  { id: 1, name: '第1环 · 格局煞环', unitLbl: '八卦 45°', desc: '力士、卦位阴符与四维空亡底盘（预留飞星）' },
+  { id: 2, name: '第2环 · 本命吉神', unitLbl: '12地支 30°', desc: '天乙贵人、十干禄位、本命文昌、驿马' },
+  { id: 3, name: '第3环 · 时空神煞', unitLbl: '12地支 30°', desc: '太岁、岁/月破、三煞、官符、都天、月生气、日旬空' },
+  { id: 4, name: '第4环 · 七政天星', unitLbl: '24山 15°', desc: 'astronomy-engine 计算太阳、太阴、木星及七政临山' },
+  { id: 5, name: '第5环 · 决策外环', unitLbl: '360° 合成', desc: '紫金净吉 / 双色撞宫 / 凶煞避让外光晕' }
+];
+
+const SpaceEngine = {
+  normToken(tok){ return GUA_ALIAS[tok] || tok; },
+
+  getCenter(token, unit){
+    const t = this.normToken(token);
+    if (unit === 'm24') { const i = M24.indexOf(t); return i >= 0 ? i * 15 : null; }
+    if (unit === 'b12') { const i = ZHI.indexOf(t); return i >= 0 ? i * 30 : null; }
+    if (unit === 'gua8') { const i = GUA8.indexOf(t); return i >= 0 ? i * 45 : null; }
+    return null;
+  },
+
+  resolveUnit(token, fallbackUnit){
+    const t = this.normToken(token);
+    if (fallbackUnit && fallbackUnit !== 'auto') return fallbackUnit;
+    if (['坎','震','离','兑'].includes(t)) return 'gua8';
+    if (M24.includes(t)) return 'm24';
+    if (GUA8.includes(t)) return 'gua8';
+    if (ZHI.includes(t)) return 'b12';
+    return 'm24';
+  },
+
+  buildSector(token, unit, branchSpanMode){
+    const u = this.resolveUnit(token, unit);
+    const center = this.getCenter(token, u);
+    if (center === null) return null;
+    let width = 15;
+    if (u === 'm24') width = 15;
+    else if (u === 'b12') width = (branchSpanMode === '15') ? 15 : 30;
+    else if (u === 'gua8') width = 45;
+    const half = width / 2;
+    return {
+      token: this.normToken(token),
+      unit: u,
+      center,
+      width,
+      half,
+      start: normDeg(center - half),
+      end: normDeg(center + half)
+    };
+  },
+
+  containsDeg(deg, sector){
+    return Math.abs(angDiff(deg, sector.center)) <= sector.half + 1e-6;
+  },
+
+  describeAngle(deg){
+    const d = normDeg(deg);
+    const mIdx = Math.floor(normDeg(d + 7.5) / 15) % 24;
+    const bIdx = Math.floor(normDeg(d + 15) / 30) % 12;
+    const gIdx = Math.floor(normDeg(d + 22.5) / 45) % 8;
+    const branch = ZHI[bIdx];
+    const bCenter = bIdx * 30;
+    const offsetInBranch = angDiff(d, bCenter);
+    const pct = clamp(((offsetInBranch + 15) / 30) * 100, 0, 100);
+
+    const coreMIdx = (bIdx * 2) % 24;
+    const leftM = M24[(coreMIdx + 23) % 24];
+    const coreM = M24[coreMIdx];
+    const rightM = M24[(coreMIdx + 1) % 24];
+
+    let zone = 'core';
+    let zoneLabel = `本山核心·${coreM}`;
+    if (offsetInBranch < -7.5) { zone = 'left'; zoneLabel = `左半山·${leftM}`; }
+    else if (offsetInBranch > 7.5) { zone = 'right'; zoneLabel = `右半山·${rightM}`; }
+
+    let diagHit = null;
+    for (const mid of DIAG_MIDS) {
+      if (Math.abs(angDiff(d, mid)) <= 2.5) {
+        diagHit = { deg: mid, name: DIAG_NAMES[mid] };
+        break;
+      }
+    }
+
+    return { deg: d, m24: M24[mIdx], b12: branch, gua8: GUA8[gIdx], leftM, coreM, rightM, zone, zoneLabel, pct, diagHit };
+  }
+};
+
+/* ============================================================================
+ * MODULE 2: CALENDAR ENGINE + ASTRONOMY-ENGINE CELESTIAL ENGINE
+ * ========================================================================== */
+const CalendarEngine = {
+  lunarReady: false,
+
+  jdn(y, m, d){
+    const a = Math.floor((14 - m) / 12);
+    const Y = y + 4800 - a;
+    const M = m + 12 * a - 3;
+    return d + Math.floor((153 * M + 2) / 5) + 365 * Y + Math.floor(Y / 4) - Math.floor(Y / 100) + Math.floor(Y / 400) - 32045;
+  },
+
+  solarLongitude(y, m, d, hour, min){
+    const jd0 = this.jdn(y, m, d) - 0.5;
+    const jd = jd0 + ((hour + (min || 0) / 60) - 8) / 24;
+    const t = jd - 2451545.0;
+    const L = normDeg(280.460 + 0.9856474 * t);
+    const gRad = normDeg(357.528 + 0.9856003 * t) * Math.PI / 180;
+    return normDeg(L + 1.915 * Math.sin(gRad) + 0.020 * Math.sin(2 * gRad));
+  },
+
+  gzIndex(gz){
+    const g = GAN.indexOf(gz[0]), z = ZHI.indexOf(gz[1]);
+    for (let i = 0; i < 60; i++) if (i % 10 === g && i % 12 === z) return i;
+    return 0;
+  },
+
+  xunkong(dayGZ){
+    const idx = this.gzIndex(dayGZ);
+    const head = Math.floor(idx / 10) * 10;
+    return { head: GAN[head % 10] + ZHI[head % 12], voids: [ZHI[(head + 10) % 12], ZHI[(head + 11) % 12]] };
+  },
+
+  jianchu(monthZhi, dayZhi){
+    return JIANCHU[(ZHI.indexOf(dayZhi) - ZHI.indexOf(monthZhi) + 12) % 12];
+  },
+
+  hourGZFor(dayGan, shichenIdx){
+    const startMap = {0:0, 5:0, 1:2, 6:2, 2:4, 7:4, 3:6, 8:6, 4:8, 9:8};
+    const st = startMap[GAN.indexOf(dayGan)] || 0;
+    return GAN[(st + shichenIdx) % 10] + ZHI[shichenIdx];
+  },
+
+  hourToShichenIdx(hour){
+    if (hour >= 23 || hour < 1) return 0;
+    return Math.floor((hour + 1) / 2);
+  },
+
+  tianKeDiChong(ga, za, gb, zb){
+    if (CHONG[za] !== zb) return null;
+    if (WX_KE[GAN_WX[ga]] === GAN_WX[gb]) return '克出';
+    if (WX_KE[GAN_WX[gb]] === GAN_WX[ga]) return '克入';
+    return null;
+  },
+
+  calcPillars(y, m, d, hour, min){
+    if (this.lunarReady && typeof window.Solar !== 'undefined') {
+      try {
+        const solar = window.Solar.fromYmdHms(y, m, d, hour, min || 0, 0);
+        const ec = solar.getLunar().getEightChar();
+        ec.setSect(2);
+        const yGZ = ec.getYear(), mGZ = ec.getMonth(), dGZ = ec.getDay(), hGZ = ec.getTime();
+        const xk = this.xunkong(dGZ);
+        return {
+          engine: 'lunar-javascript (setSect 2)',
+          yGZ, mGZ, dGZ, hGZ,
+          yGan: yGZ[0], yZhi: yGZ[1], mGan: mGZ[0], mZhi: mGZ[1],
+          dGan: dGZ[0], dZhi: dGZ[1], hGan: hGZ[0], hZhi: hGZ[1],
+          xunHead: xk.head, voids: xk.voids, jianchu: this.jianchu(mGZ[1], dGZ[1])
+        };
+      } catch (_) {}
+    }
+
+    const lam = this.solarLongitude(y, m, d, hour, min);
+    const mIdx = Math.floor(normDeg(lam - 315) / 30);
+    const gzYear = (m <= 2 && mIdx >= 10) ? (y - 1) : y;
+    const yIdx = ((gzYear - 1984) % 60 + 60) % 60;
+    const yGan = GAN[yIdx % 10], yZhi = ZHI[yIdx % 12];
+    const tigerStart = [2, 4, 6, 8, 0][(yIdx % 10) % 5];
+    const mGan = GAN[(tigerStart + mIdx) % 10], mZhi = ZHI[(2 + mIdx) % 12];
+    const dayIdx = ((54 + (this.jdn(y, m, d) - 2451545)) % 60 + 60) % 60;
+    const dGan = GAN[dayIdx % 10], dZhi = ZHI[dayIdx % 12];
+    const hGZ = this.hourGZFor(dGan, this.hourToShichenIdx(hour));
+    const xk = this.xunkong(dGan + dZhi);
+
+    return {
+      engine: '纯 JS 离线节气兜底引擎',
+      yGZ: yGan + yZhi, mGZ: mGan + mZhi, dGZ: dGan + dZhi, hGZ,
+      yGan, yZhi, mGan, mZhi, dGan, dZhi, hGan: hGZ[0], hZhi: hGZ[1],
+      xunHead: xk.head, voids: xk.voids, jianchu: this.jianchu(mZhi, dZhi)
+    };
+  },
+
+  // Natal × Transit Xiangzhu (相主穿插检测)
+  analyzeNatalTransit(natalCtx, transitCtx){
+    const np = natalCtx.pillars, tp = transitCtx.pillars;
+    const clashes = [];
+    const bonuses = [];
+    const tPillars = [
+      ['年柱', tp.yGan, tp.yZhi], ['月柱', tp.mGan, tp.mZhi],
+      ['日柱', tp.dGan, tp.dZhi], ['时柱', tp.hGan, tp.hZhi]
+    ];
+
+    // If user didn't mask birth pillars with quickStem only, check Year & Day pillar clashes
+    if (!natalCtx.quickStem) {
+      const nTargets = [['生年柱', np.yGan, np.yZhi], ['生日柱', np.dGan, np.dZhi]];
+      tPillars.forEach(([tn, tg, tz]) => {
+        nTargets.forEach(([nn, ng, nz]) => {
+          if (this.tianKeDiChong(tg, tz, ng, nz) === '克出') {
+            clashes.push(`日课${tn}(${tg}${tz}) 天克地冲 本命${nn}(${ng}${nz})`);
+          }
+        });
+      });
+      if (tp.voids.includes(np.yZhi)) {
+        clashes.push(`本命生年支(${np.yZhi}) 落本日${tp.xunHead}旬空`);
+      }
+    }
+
+    // Check if current transit pillars bring out Natal 禄/贵/昌
+    const refStem = natalCtx.quickStem || (natalCtx.stemSource === 'year' ? np.yGan : np.dGan);
+    const guiTbl = natalCtx.guirenMethod === 'common' ? GUIREN_COMMON : GUIREN_CLASSICAL;
+    const guiPair = guiTbl[refStem];
+    const luZhi = LU_TBL[refStem];
+    const wcZhi = WENCHANG_TBL[refStem];
+
+    tPillars.forEach(([tn, tg, tz]) => {
+      if (guiPair && (tz === guiPair.day || tz === guiPair.night)) {
+        bonuses.push(`${tn}(${tg}${tz}) 带出本命贵人`);
+      }
+      if (tz === luZhi) bonuses.push(`${tn}(${tg}${tz}) 带出本命禄位`);
+      if (tz === wcZhi) bonuses.push(`${tn}(${tg}${tz}) 带出本命文昌`);
+    });
+
+    return { clashes, bonuses };
+  }
+};
+
+const AstroEngine = {
+  ready: false,
+  BODIES: ['Sun','Moon','Jupiter','Mercury','Venus','Mars','Saturn'],
+  META: {
+    Sun:     { cn:'太阳', glyph:'日', color:'#fb7185', pol:'good',    defOn:true,  desc:'太阳到山，光照阳和，可扶吉制小煞' },
+    Moon:    { cn:'太阴', glyph:'月', color:'#38bdf8', pol:'good',    defOn:true,  desc:'太阴临山，润泽柔和，利阴宅内事与人缘' },
+    Jupiter: { cn:'木星', glyph:'木', color:'#4ade80', pol:'good',    defOn:true,  desc:'岁星木星照临，大吉福德之星' },
+    Mercury: { cn:'水星', glyph:'水', color:'#60a5fa', pol:'neutral', defOn:false, desc:'水星临山，利文思沟通与商贸' },
+    Venus:   { cn:'金星', glyph:'金', color:'#fde047', pol:'good',    defOn:false, desc:'金星太白临山，利财帛美感与贵助' },
+    Mars:    { cn:'火星', glyph:'火', color:'#f87171', pol:'bad',     defOn:false, desc:'荧惑火星临山，燥烈防急躁口舌' },
+    Saturn:  { cn:'土星', glyph:'土', color:'#d97706', pol:'bad',     defOn:false, desc:'镇星土星临山，主迟滞沉重' }
+  },
+
+  lonToMountain24(lonDeg){
+    const d = normDeg(lonDeg);
+    for (let i = 0; i < ECLIPTIC_TO_M24.length; i++) {
+      if (d >= ECLIPTIC_TO_M24[i].s && d < ECLIPTIC_TO_M24[i].s + 15) return ECLIPTIC_TO_M24[i].m;
+    }
+    return '戌';
+  },
+
+  getGeocentricLongitude(body, dateObj){
+    const A = window.Astronomy;
+    const time = A.MakeTime(dateObj);
+    const observer = new A.Observer(0, 0, 0);
+    const equ = A.Equator(body, time, observer, true, true);
+    const raRad = (equ.ra * 15) * Math.PI / 180;
+    const decRad = equ.dec * Math.PI / 180;
+    const T = time.tt / 36525.0;
+    const epsDeg = 23.439291 - 0.0130042 * T - 0.00000016 * T * T + 0.000000504 * T * T * T;
+    const epsRad = epsDeg * Math.PI / 180;
+    const y = Math.sin(raRad) * Math.cos(epsRad) + Math.tan(decRad) * Math.sin(epsRad);
+    const x = Math.cos(raRad);
+    return normDeg(Math.atan2(y, x) * 180 / Math.PI);
+  },
+
+  calcAll(transitCtx){
+    const [ty, tm, td] = transitCtx.date.split('-').map(Number);
+    let dateObj;
+    let timeLabel;
+    if (transitCtx.astroTimeMode === 'exact') {
+      if (transitCtx.isLive) {
+        dateObj = new Date();
+        timeLabel = `实时 ${pad2(dateObj.getHours())}:${pad2(dateObj.getMinutes())}`;
+      } else {
+        const repH = transitCtx.shichenIdx === 0 ? 0 : transitCtx.shichenIdx * 2;
+        dateObj = new Date(Date.UTC(ty, tm - 1, td, repH - 8, 30, 0));
+        timeLabel = `${ZHI[transitCtx.shichenIdx]}时中点`;
+      }
+    } else {
+      // Exact match to ChineseCalander.html: 00:00 UTC+8
+      dateObj = new Date(Date.UTC(ty, tm - 1, td, -8, 0, 0));
+      timeLabel = '当日 00:00 (UTC+8)';
+    }
+
+    const out = { engineReady: false, timeLabel, bodies: {} };
+
+    if (typeof window.Astronomy !== 'undefined') {
+      this.ready = true;
+      out.engineReady = true;
+      this.BODIES.forEach(body => {
+        try {
+          const lon = this.getGeocentricLongitude(body, dateObj);
+          const m24 = this.lonToMountain24(lon);
+          let isRetrograde = false;
+          if (body !== 'Sun' && body !== 'Moon') {
+            const nextDay = new Date(dateObj.getTime() + 86400000);
+            const lonNext = this.getGeocentricLongitude(body, nextDay);
+            let diff = lonNext - lon;
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            if (diff < 0) isRetrograde = true;
+          }
+          out.bodies[body] = { lon, m24, isRetrograde, fallback: false };
+        } catch (_) {
+          out.bodies[body] = null;
+        }
+      });
+    } else {
+      // Offline fallback: Sun still computes deterministically via Meeus solarLongitude
+      const h = transitCtx.astroTimeMode === 'exact' ? (transitCtx.isLive ? new Date().getHours() : transitCtx.shichenIdx * 2) : 0;
+      const sunLon = CalendarEngine.solarLongitude(ty, tm, td, h, 0);
+      out.bodies.Sun = { lon: sunLon, m24: this.lonToMountain24(sunLon), isRetrograde: false, fallback: true };
+    }
+    return out;
+  }
+};
+
+/* ============================================================================
+ * MODULE 3: 5-RING PLUGIN REGISTRY (LAYER_REGISTRY) & CONFLICT RESOLVER
+ * ========================================================================== */
+const LAYER_REGISTRY = [];
+const LAYER_MAP = {};
+
+function registerLayer(plugin){
+  if (!plugin || !plugin.id || typeof plugin.calc !== 'function') return;
+  if (LAYER_MAP[plugin.id]) return;
+  LAYER_REGISTRY.push(plugin);
+  LAYER_MAP[plugin.id] = plugin;
+}
+
+function getNatalStems(natalCtx){
+  if (natalCtx.quickStem) return [{ stem: natalCtx.quickStem, src: '快选' }];
+  if (natalCtx.stemSource === 'year') return [{ stem: natalCtx.pillars.yGan, src: '年干' }];
+  if (natalCtx.stemSource === 'both') {
+    const out = [{ stem: natalCtx.pillars.dGan, src: '日干' }];
+    if (natalCtx.pillars.yGan !== natalCtx.pillars.dGan) out.push({ stem: natalCtx.pillars.yGan, src: '年干' });
+    return out;
+  }
+  return [{ stem: natalCtx.pillars.dGan, src: '日干' }];
+}
+
+function parseYinFuByUnit(gan, prefix, wantedUnit){
+  const list = ZHENGYIN[gan] || [];
+  return list
+    .filter(tok => {
+      const u = ['艮','巽','乾','兑','坤','坎'].includes(tok) ? 'gua8' : 'm24';
+      return u === wantedUnit;
+    })
+    .map(tok => ({ target: tok, unit: wantedUnit, label: `${prefix}阴符(${tok})`, short: tok }));
+}
+
+/* ---------- RING 1 (45° Bagua · 格局煞环) ---------- */
+registerLayer({
+  id: 'yr_lishi', ring: 1, name: '力士', scope: 'year', polarity: 'bad', unit: 'gua8',
+  color: '#c084fc', enabledByDefault: false, desc: '力士所在八卦大宫不可向',
+  calc(_, t){ const g = LISHI[t.pillars.yZhi]; return [{ target: g, unit: 'gua8', label: `力士(${g}宫)`, short: g }]; }
+});
+registerLayer({
+  id: 'yr_yinfu', ring: 1, name: '年阴符', scope: 'year', polarity: 'bad', unit: 'gua8',
+  color: '#9333ea', enabledByDefault: false, desc: '年干正阴符方，阴符宜德化',
+  calc(_, t){
+    const list = ZHENGYIN[t.pillars.yGan] || [];
+    return list.map(tok => ({
+      target: tok, unit: ['艮','巽','乾','兑','坤','坎'].includes(tok) ? 'gua8' : 'm24',
+      label: `年阴符(${tok})`, short: tok
+    }));
+  }
+});
+registerLayer({
+  id: 'mo_yinfu', ring: 1, name: '月阴符', scope: 'month', polarity: 'bad', unit: 'gua8',
+  color: '#a855f7', enabledByDefault: false, desc: '月阴符不可犯',
+  calc(_, t){
+    const list = ZHENGYIN[t.pillars.mGan] || [];
+    return list.map(tok => ({
+      target: tok, unit: ['艮','巽','乾','兑','坤','坎'].includes(tok) ? 'gua8' : 'm24',
+      label: `月阴符(${tok})`, short: tok
+    }));
+  }
+});
+registerLayer({
+  id: 'dy_yinfu', ring: 1, name: '日阴符', scope: 'day', polarity: 'bad', unit: 'gua8',
+  color: '#8b5cf6', enabledByDefault: true, desc: '日干正阴符方',
+  calc(_, t){
+    const list = ZHENGYIN[t.pillars.dGan] || [];
+    return list.map(tok => ({
+      target: tok, unit: ['艮','巽','乾','兑','坤','坎'].includes(tok) ? 'gua8' : 'm24',
+      label: `日阴符(${tok})`, short: tok
+    }));
+  }
+});
+registerLayer({
+  id: 'hr_yinfu', ring: 1, name: '时阴符', scope: 'hour', polarity: 'bad', unit: 'gua8',
+  color: '#7c3aed', enabledByDefault: false, desc: '时干正阴符方',
+  calc(_, t){
+    const list = ZHENGYIN[t.pillars.hGan] || [];
+    return list.map(tok => ({
+      target: tok, unit: ['艮','巽','乾','兑','坤','坎'].includes(tok) ? 'gua8' : 'm24',
+      label: `时阴符(${tok})`, short: tok
+    }));
+  }
+});
+
+/* ---------- RING 2 (30°/15° 12 Branches · 本命吉神环) ---------- */
+registerLayer({
+  id: 'natal_guiren', ring: 2, name: '天乙贵人', scope: 'natal', polarity: 'good', unit: 'b12',
+  color: '#f5c451', enabledByDefault: true, desc: '本命第一吉神（12地支宫位），支持古法昼夜与通行口诀',
+  calc(natalCtx){
+    const tbl = natalCtx.guirenMethod === 'common' ? GUIREN_COMMON : GUIREN_CLASSICAL;
+    const hits = [];
+    getNatalStems(natalCtx).forEach(({ stem, src }) => {
+      const pair = tbl[stem];
+      if (!pair) return;
+      hits.push({ target: pair.day, unit: 'b12', label: `${src}${stem}·昼/阳贵(${pair.day})`, short: `${pair.day}(昼贵)` });
+      hits.push({ target: pair.night, unit: 'b12', label: `${src}${stem}·夜/阴贵(${pair.night})`, short: `${pair.night}(夜贵)` });
+    });
+    return hits;
+  }
+});
+registerLayer({
+  id: 'natal_lu', ring: 2, name: '十干禄位', scope: 'natal', polarity: 'good', unit: 'b12',
+  color: '#ff9436', enabledByDefault: true, desc: '食禄爵禄位（12地支宫位），利财运签约与根基',
+  calc(natalCtx){
+    return getNatalStems(natalCtx).map(({ stem, src }) => {
+      const z = LU_TBL[stem];
+      return { target: z, unit: 'b12', label: `${src}${stem}·禄位(${z})`, short: `${z}(禄)` };
+    });
+  }
+});
+registerLayer({
+  id: 'natal_wenchang', ring: 2, name: '本命文昌', scope: 'natal', polarity: 'good', unit: 'b12',
+  color: '#34d399', enabledByDefault: true, desc: '文思功名位（12地支宫位），利考证文书与策划',
+  calc(natalCtx){
+    return getNatalStems(natalCtx).map(({ stem, src }) => {
+      const z = WENCHANG_TBL[stem];
+      return { target: z, unit: 'b12', label: `${src}${stem}·文昌(${z})`, short: `${z}(昌)` };
+    });
+  }
+});
+registerLayer({
+  id: 'natal_yima', ring: 2, name: '本命驿马', scope: 'natal', polarity: 'good', unit: 'b12',
+  color: '#22d3ee', enabledByDefault: false, desc: '按生年支与日支三合起驿马，利出行发单与变动',
+  calc(natalCtx){
+    if (natalCtx.quickStem) return [];
+    const out = [];
+    const yMa = YIMA_TBL[natalCtx.pillars.yZhi];
+    const dMa = YIMA_TBL[natalCtx.pillars.dZhi];
+    if (yMa) out.push({ target: yMa, unit: 'b12', label: `年支驿马(${yMa})`, short: `${yMa}(年马)` });
+    if (dMa && dMa !== yMa) out.push({ target: dMa, unit: 'b12', label: `日支驿马(${dMa})`, short: `${dMa}(日马)` });
+    return out;
+  }
+});
+
+/* ---------- RING 3 (30°/15° 12 Branches · 时空神煞环) ---------- */
+registerLayer({
+  id: 'yr_taisui', ring: 3, name: '太岁', scope: 'year', polarity: 'neutral', unit: 'b12',
+  color: '#a78bfa', enabledByDefault: false, desc: '年支太岁所临，宜静敬慎动',
+  calc(_, t){ const z = t.pillars.yZhi; return [{ target: z, unit: 'b12', label: `太岁(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'yr_suipo', ring: 3, name: '岁破', scope: 'year', polarity: 'bad', unit: 'b12',
+  color: '#ef4444', enabledByDefault: true, desc: '太岁对冲大耗方，忌动土修造',
+  calc(_, t){ const z = CHONG[t.pillars.yZhi]; return [{ target: z, unit: 'b12', label: `岁破(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'yr_sansha', ring: 3, name: '年三煞', scope: 'year', polarity: 'bad', unit: 'b12',
+  color: '#dc2626', enabledByDefault: false, desc: '三煞可向不可坐，动土大修忌坐',
+  calc(_, t){ return (SANSHA[SANHE[t.pillars.yZhi]] || []).map(z => ({ target: z, unit: 'b12', label: `年三煞(${z})`, short: z })); }
+});
+registerLayer({
+  id: 'yr_tianguan', ring: 3, name: '年天官符', scope: 'year', polarity: 'bad', unit: 'b12',
+  color: '#f97316', enabledByDefault: false, desc: '营造兴土木须避天官符',
+  calc(_, t){ const z = TIANGUAN[SANHE[t.pillars.yZhi]]; return [{ target: z, unit: 'b12', label: `年天官符(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'yr_diguan', ring: 3, name: '年地官符', scope: 'year', polarity: 'bad', unit: 'b12',
+  color: '#fb923c', enabledByDefault: false, desc: '营造兴土木须避地官符',
+  calc(_, t){ const z = DIGUAN[t.pillars.yZhi]; return [{ target: z, unit: 'b12', label: `年地官符(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'yr_feilian', ring: 3, name: '飞廉大煞', scope: 'year', polarity: 'bad', unit: 'b12',
+  color: '#e11d48', enabledByDefault: false, desc: '主意外口舌、损名与惊扰',
+  calc(_, t){ const z = FEILIAN[t.pillars.yZhi]; return [{ target: z, unit: 'b12', label: `飞廉大煞(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'yr_dutian', ring: 3, name: '戊己都天', scope: 'year', polarity: 'bad', unit: 'b12',
+  color: '#b91c1c', enabledByDefault: false, desc: '修造动土安葬重煞提示',
+  calc(_, t){
+    const branches = [...(DUTIAN[t.pillars.yGan] || '')].filter(ch => ZHI.includes(ch));
+    return branches.map(z => ({ target: z, unit: 'b12', label: `戊己都天(${z})`, short: z }));
+  }
+});
+registerLayer({
+  id: 'mo_yuejian', ring: 3, name: '月建', scope: 'month', polarity: 'neutral', unit: 'b12',
+  color: '#60a5fa', enabledByDefault: false, desc: '当月月气所在之宫',
+  calc(_, t){ const z = t.pillars.mZhi; return [{ target: z, unit: 'b12', label: `月建(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'mo_yuepo', ring: 3, name: '月破', scope: 'month', polarity: 'bad', unit: 'b12',
+  color: '#f43f5e', enabledByDefault: true, desc: '月建对冲小耗方，忌办大事',
+  calc(_, t){ const z = CHONG[t.pillars.mZhi]; return [{ target: z, unit: 'b12', label: `月破(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'mo_sansha', ring: 3, name: '月三煞', scope: 'month', polarity: 'bad', unit: 'b12',
+  color: '#e11d48', enabledByDefault: false, desc: '月三煞方，动土大修忌坐',
+  calc(_, t){ return (SANSHA[SANHE[t.pillars.mZhi]] || []).map(z => ({ target: z, unit: 'b12', label: `月三煞(${z})`, short: z })); }
+});
+registerLayer({
+  id: 'mo_tianguan', ring: 3, name: '月天官符', scope: 'month', polarity: 'bad', unit: 'b12',
+  color: '#ea580c', enabledByDefault: false, desc: '当月天官符方',
+  calc(_, t){ const z = TIANGUAN[SANHE[t.pillars.mZhi]]; return [{ target: z, unit: 'b12', label: `月天官符(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'mo_diguan', ring: 3, name: '月地官符', scope: 'month', polarity: 'bad', unit: 'b12',
+  color: '#fdba74', enabledByDefault: false, desc: '当月地官符方',
+  calc(_, t){ const z = DIGUAN[t.pillars.mZhi]; return [{ target: z, unit: 'b12', label: `月地官符(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'mo_shengqi', ring: 3, name: '月生气', scope: 'month', polarity: 'good', unit: 'b12',
+  color: '#2dd4bf', enabledByDefault: true, desc: '建月前二位为生气吉方',
+  calc(_, t){ const z = SHENGQI[t.pillars.mZhi]; return [{ target: z, unit: 'b12', label: `月生气(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'mo_siqi', ring: 3, name: '月死气', scope: 'month', polarity: 'bad', unit: 'b12',
+  color: '#fb7185', enabledByDefault: false, desc: '生气对冲为月死气方',
+  calc(_, t){ const z = CHONG[SHENGQI[t.pillars.mZhi]]; return [{ target: z, unit: 'b12', label: `月死气(${z})`, short: z }]; }
+});
+registerLayer({
+  id: 'dy_xunkong', ring: 3, name: '日旬空', scope: 'day', polarity: 'neutral', unit: 'b12',
+  color: '#94a3b8', enabledByDefault: true, desc: '本日旬空两宫，吉星落空则力虚',
+  calc(_, t){ return t.pillars.voids.map(z => ({ target: z, unit: 'b12', label: `日旬空(${z})`, short: `${z}(空)` })); }
+});
+registerLayer({
+  id: 'hr_wenchang', ring: 3, name: '时文昌', scope: 'hour', polarity: 'good', unit: 'b12',
+  color: '#38bdf8', enabledByDefault: false, desc: '按当辰时支起时文昌吉方',
+  calc(_, t){ const z = SHI_WENCHANG_TBL[t.pillars.hZhi]; return [{ target: z, unit: 'b12', label: `时文昌(${z})`, short: z }]; }
+});
+
+/* ---------- RING 4 (15° 24 Mountains · 七政天星环 via astronomy-engine) ---------- */
+AstroEngine.BODIES.forEach(body => {
+  const m = AstroEngine.META[body];
+  registerLayer({
+    id: 'astro_' + body.toLowerCase(),
+    ring: 4,
+    name: `${m.cn}临山`,
+    scope: 'astro',
+    polarity: m.pol,
+    unit: 'm24',
+    color: m.color,
+    glyph: m.glyph,
+    bodyCode: body,
+    enabledByDefault: m.defOn,
+    desc: m.desc,
+    calc(_, transitCtx){
+      const pos = transitCtx.astro && transitCtx.astro.bodies && transitCtx.astro.bodies[body];
+      if (!pos) return [];
+      const dir = (body !== 'Sun' && body !== 'Moon') ? (pos.isRetrograde ? '↺逆' : '→顺') : '';
+      return [{
+        target: pos.m24,
+        unit: 'm24',
+        glyph: m.glyph,
+        label: `${m.cn}临${pos.m24}山(${pos.lon.toFixed(1)}°${dir})`,
+        short: `${pos.m24}${pos.isRetrograde ? '↺' : ''}`
+      }];
+    }
+  });
+});
+
+/* ---------- Conflict Resolver (Cross-Layer Natal × Transit × Celestial) ---------- */
+const ConflictResolver = {
+  evaluate(deg, computedEntries, ringEnabled){
+    const matched = [];
+    for (const entry of computedEntries) {
+      if (!entry.enabled || !ringEnabled[entry.plugin.ring]) continue;
+      for (const s of entry.sectors) {
+        if (SpaceEngine.containsDeg(deg, s)) {
+          matched.push({
+            layerId: entry.plugin.id,
+            ring: entry.plugin.ring,
+            layerName: entry.plugin.name,
+            scope: entry.plugin.scope,
+            polarity: entry.plugin.polarity,
+            color: entry.plugin.color,
+            label: s.label,
+            short: s.short,
+            target: s.token,
+            unit: s.unit
+          });
+        }
+      }
+    }
+
+    const goods = matched.filter(m => m.polarity === 'good');
+    const bads = matched.filter(m => m.polarity === 'bad');
+    const voids = matched.filter(m => m.layerId === 'dy_xunkong');
+    const neutrals = matched.filter(m => m.polarity === 'neutral' && m.layerId !== 'dy_xunkong');
+    const natalGoods = goods.filter(m => m.ring === 2);
+    const astroGoods = goods.filter(m => m.ring === 4);
+    const hasSun = matched.some(m => m.layerId === 'astro_sun');
+    const uniqueGoodLayers = new Set(goods.map(g => g.layerId));
+
+    let state = 'neutral';
+    let badge = '平宫';
+    let shortMsg = '未命中已开启的特殊吉凶星煞';
+    let advice = '当前方位未命中已开启的特殊吉凶图层。';
+
+    if (goods.length > 0 && bads.length > 0) {
+      state = 'conflict';
+      badge = '⚠ 吉凶同宫';
+      const gNames = [...new Set(goods.map(x => x.layerName))].join('、');
+      const bNames = [...new Set(bads.map(x => x.layerName))].join('、');
+      const sunHint = hasSun ? '（太阳到山略有制化，仍忌重动）' : '';
+      shortMsg = `${gNames} ✕ ${bNames} · 宜静忌动`;
+      advice = `虽中【${gNames}】，但当前叠临【${bNames}】，宜静忌动，重大修造慎用${sunHint}。`;
+    } else if (goods.length > 0 && voids.length > 0) {
+      state = 'weakened';
+      badge = '◇ 吉星落空';
+      const gNames = [...new Set(goods.map(x => x.layerName))].join('、');
+      shortMsg = `${gNames} 逢日旬空 · 力虚减半`;
+      advice = `命中【${gNames}】，但正落本日旬空（${voids[0].target}空），吉力偏虚，重要大事宜另择净位。`;
+    } else if (uniqueGoodLayers.size >= 2) {
+      state = 'golden';
+      if (natalGoods.length > 0 && astroGoods.length > 0) {
+        badge = '✦ 天星照命黄金位';
+      } else {
+        badge = '✦ 多星叠临黄金位';
+      }
+      const gNames = [...uniqueGoodLayers].map(id => LAYER_MAP[id].name).join(' + ');
+      shortMsg = `${gNames} · 净吉无煞`;
+      advice = `多重吉曜穿插交汇（${gNames}），且无重煞空亡，为当下极佳定位与纳气方位。`;
+    } else if (goods.length > 0) {
+      state = 'good';
+      badge = `✦ ${goods[0].layerName}`;
+      shortMsg = `${goods.map(x => x.label).join('、')} · 净吉可用`;
+      advice = `正临【${goods.map(x => x.label).join('、')}】净吉方，无重煞冲克，适合办公、谈判或朝向借气。`;
+    } else if (bads.length > 0) {
+      state = 'bad';
+      badge = bads.length >= 2 ? `⚠ 多煞叠临(${bads.length})` : `⚠ ${bads[0].layerName}`;
+      const bNames = [...new Set(bads.map(x => x.layerName))].join('、');
+      shortMsg = `命中 ${bNames} · 避让忌动`;
+      advice = `命中【${bNames}】，此方宜避，忌动土、破墙、立向或在此争执决策。`;
+    } else if (voids.length > 0) {
+      state = 'neutral';
+      badge = '◇ 日旬空';
+      shortMsg = `落本日旬空(${voids[0].target}) · 气虚`;
+      advice = `当前位于本日旬空宫位，吉凶之力皆偏虚。`;
+    } else if (neutrals.length > 0) {
+      state = 'neutral';
+      badge = `◈ ${neutrals[0].layerName}`;
+      shortMsg = `临 ${neutrals.map(x => x.label).join('、')}`;
+      advice = `当前临【${neutrals.map(x => x.label).join('、')}】，主气所在，宜敬慎而行。`;
+    }
+
+    return { state, badge, shortMsg, advice, matched, goods, bads, voids, neutrals };
+  }
+};
+
+/* ============================================================================
+ * MODULE 4: ZERO-JITTER 3D ENU SENSOR ENGINE (PROTECTED CORE — UNCHANGED)
+ * ========================================================================== */
+const SensorEngine = {
+  heading: 0, rawDeg: 0, offsetDeg: 0, r22: 0, hz: 0,
+  activeSource: 'init', hasInitSmooth: false, smoothSin: 0, smoothCos: 1,
+  runToken: 0, watchdogTimer: null, cleanupFn: null, sampleTimes: [],
+  onUpdate: null, onStatus: null,
+
+  isRealIOS(){
+    const ua = navigator.userAgent || '';
+    if (/Android/i.test(ua)) return false;
+    return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  },
+
+  getScreenAngle(){
+    if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+    if (typeof window.orientation === 'number') return window.orientation;
+    return 0;
+  },
+
+  enuToHeading(R01, R11, R02, R12, R22){
+    this.r22 = R22;
+    const t = clamp((R22 - 0.15) / 0.70, 0, 1);
+    const dirE = t * R01 + (1 - t) * (-R02);
+    const dirN = t * R11 + (1 - t) * (-R12);
+    if (Math.hypot(dirE, dirN) < 1e-4) return this.rawDeg;
+    let deg = normDeg(Math.atan2(dirE, dirN) * 180 / Math.PI);
+    const scr = this.getScreenAngle();
+    if (scr) deg = normDeg(deg + scr);
+    return deg;
+  },
+
+  quatToHeading(q){
+    const [x, y, z, w] = q;
+    const R01 = 2 * (x * y - z * w);
+    const R11 = 1 - 2 * (x * x + z * z);
+    const R02 = 2 * (x * z + y * w);
+    const R12 = 2 * (y * z - x * w);
+    const R22 = 1 - 2 * (x * x + y * y);
+    return this.enuToHeading(R01, R11, R02, R12, R22);
+  },
+
+  eulerZXYToHeading(alphaDeg, betaDeg, gammaDeg){
+    const a = (alphaDeg || 0) * Math.PI / 180;
+    const b = (betaDeg || 0) * Math.PI / 180;
+    const g = (gammaDeg || 0) * Math.PI / 180;
+    const cZ = Math.cos(a), sZ = Math.sin(a);
+    const cX = Math.cos(b), sX = Math.sin(b);
+    const cY = Math.cos(g), sY = Math.sin(g);
+    const R01 = -sZ * cX;
+    const R11 =  cZ * cX;
+    const R02 =  cZ * sY + sZ * sX * cY;
+    const R12 =  sZ * sY - cZ * sX * cY;
+    const R22 =  cX * cY;
+    return this.enuToHeading(R01, R11, R02, R12, R22);
+  },
+
+  recordSample(raw, isManual){
+    const now = performance.now();
+    this.sampleTimes.push(now);
+    while (this.sampleTimes.length > 0 && now - this.sampleTimes[0] > 1000) this.sampleTimes.shift();
+    this.hz = isManual ? 0 : this.sampleTimes.length;
+    this.rawDeg = normDeg(raw);
+    const target = normDeg(this.rawDeg + (isManual ? 0 : this.offsetDeg));
+
+    if (isManual || !this.hasInitSmooth) {
+      const rad = target * Math.PI / 180;
+      this.smoothSin = Math.sin(rad);
+      this.smoothCos = Math.cos(rad);
+      this.heading = target;
+      this.hasInitSmooth = true;
+    } else {
+      const delta = Math.abs(angDiff(target, this.heading));
+      if (delta >= 0.3) {
+        const rad = target * Math.PI / 180;
+        const alpha = delta > 25 ? 0.38 : 0.22;
+        this.smoothSin += alpha * (Math.sin(rad) - this.smoothSin);
+        this.smoothCos += alpha * (Math.cos(rad) - this.smoothCos);
+        const len = Math.hypot(this.smoothSin, this.smoothCos) || 1;
+        this.smoothSin /= len;
+        this.smoothCos /= len;
+        this.heading = normDeg(Math.atan2(this.smoothSin, this.smoothCos) * 180 / Math.PI);
+      }
+    }
+    if (this.onUpdate) this.onUpdate(this.heading);
+  },
+
+  teardown(){
+    if (this.watchdogTimer) { clearTimeout(this.watchdogTimer); this.watchdogTimer = null; }
+    if (this.cleanupFn) { try { this.cleanupFn(); } catch (_) {} this.cleanupFn = null; }
+    this.sampleTimes = [];
+    this.hz = 0;
+  },
+
+  emitStatus(source){
+    this.activeSource = source;
+    if (this.onStatus) this.onStatus(source);
+  },
+
+  takeOverSim(deg){
+    this.runToken++;
+    this.teardown();
+    this.emitStatus('sim');
+    this.r22 = 0;
+    this.recordSample(deg !== undefined ? deg : this.heading, true);
+  },
+
+  startAutoWaterfall(){
+    const tok = ++this.runToken;
+    this.teardown();
+    this.hasInitSmooth = false;
+    if (this.isRealIOS()) this.tryIOSFlow(tok);
+    else this.tryAbsSensor(tok, true);
+  },
+
+  async requestIOSPermissionAndStart(){
+    const tok = ++this.runToken;
+    this.teardown();
+    this.hasInitSmooth = false;
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const res = await DeviceOrientationEvent.requestPermission();
+        if (tok !== this.runToken) return false;
+        if (res === 'granted') { this.tryWebkit(tok, true); return true; }
+      } catch (_) {}
+    }
+    this.tryWebkit(tok, true);
+    return false;
+  },
+
+  tryIOSFlow(tok){
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      this.emitStatus('sim');
+      if (this.onStatus) this.onStatus('ios-wait');
+      return;
+    }
+    this.tryWebkit(tok, true);
+  },
+
+  tryAbsSensor(tok, cascade){
+    this.teardown();
+    if (tok !== this.runToken) return;
+    if (!('AbsoluteOrientationSensor' in window) || !window.isSecureContext) {
+      if (cascade) this.tryDOAbs(tok, true); else this.emitStatus('sim');
+      return;
+    }
+    this.emitStatus('absSensor');
+    let gotReading = false;
+    try {
+      const sensor = new AbsoluteOrientationSensor({ frequency: 30, referenceFrame: 'device' });
+      const onRead = () => {
+        if (tok !== this.runToken || !sensor.quaternion) return;
+        if (!gotReading) { gotReading = true; if (this.watchdogTimer) { clearTimeout(this.watchdogTimer); this.watchdogTimer = null; } }
+        this.recordSample(this.quatToHeading(sensor.quaternion), false);
+      };
+      const onErr = () => {
+        if (tok !== this.runToken) return;
+        this.teardown();
+        if (cascade) this.tryDOAbs(tok, true); else this.emitStatus('sim');
+      };
+      sensor.addEventListener('reading', onRead);
+      sensor.addEventListener('error', onErr);
+      this.cleanupFn = () => {
+        sensor.removeEventListener('reading', onRead);
+        sensor.removeEventListener('error', onErr);
+        try { sensor.stop(); } catch (_) {}
+      };
+      sensor.start();
+      this.watchdogTimer = setTimeout(() => {
+        if (tok !== this.runToken || gotReading) return;
+        this.teardown();
+        if (cascade) this.tryDOAbs(tok, true); else this.emitStatus('sim');
+      }, 900);
+    } catch (_) {
+      this.teardown();
+      if (cascade) this.tryDOAbs(tok, true); else this.emitStatus('sim');
+    }
+  },
+
+  tryDOAbs(tok, cascade){
+    this.teardown();
+    if (tok !== this.runToken) return;
+    if (!('ondeviceorientationabsolute' in window)) {
+      if (cascade) this.tryDOStd(tok, true); else this.emitStatus('sim');
+      return;
+    }
+    this.emitStatus('doAbs');
+    let gotReading = false;
+    const handler = (e) => {
+      if (tok !== this.runToken || typeof e.alpha !== 'number') return;
+      if (!gotReading) { gotReading = true; if (this.watchdogTimer) { clearTimeout(this.watchdogTimer); this.watchdogTimer = null; } }
+      this.recordSample(this.eulerZXYToHeading(e.alpha, e.beta, e.gamma), false);
+    };
+    window.addEventListener('deviceorientationabsolute', handler, true);
+    this.cleanupFn = () => window.removeEventListener('deviceorientationabsolute', handler, true);
+    this.watchdogTimer = setTimeout(() => {
+      if (tok !== this.runToken || gotReading) return;
+      this.teardown();
+      if (cascade) this.tryDOStd(tok, true); else this.emitStatus('sim');
+    }, 1000);
+  },
+
+  tryDOStd(tok, cascade){
+    this.teardown();
+    if (tok !== this.runToken) return;
+    if (!('DeviceOrientationEvent' in window)) { this.emitStatus('sim'); return; }
+    this.emitStatus('doStd');
+    let gotReading = false;
+    const handler = (e) => {
+      if (tok !== this.runToken || typeof e.alpha !== 'number') return;
+      if (!gotReading) { gotReading = true; if (this.watchdogTimer) { clearTimeout(this.watchdogTimer); this.watchdogTimer = null; } }
+      this.recordSample(this.eulerZXYToHeading(e.alpha, e.beta, e.gamma), false);
+    };
+    window.addEventListener('deviceorientation', handler, true);
+    this.cleanupFn = () => window.removeEventListener('deviceorientation', handler, true);
+    this.watchdogTimer = setTimeout(() => {
+      if (tok !== this.runToken || gotReading) return;
+      this.teardown();
+      if (cascade) this.emitStatus('sim');
+    }, 1200);
+  },
+
+  tryWebkit(tok, cascade){
+    this.teardown();
+    if (tok !== this.runToken) return;
+    this.emitStatus('webkit');
+    let gotReading = false;
+    const handler = (e) => {
+      if (tok !== this.runToken || typeof e.webkitCompassHeading !== 'number' || isNaN(e.webkitCompassHeading)) return;
+      if (!gotReading) { gotReading = true; if (this.watchdogTimer) { clearTimeout(this.watchdogTimer); this.watchdogTimer = null; } }
+      const b = (e.beta || 0) * Math.PI / 180, g = (e.gamma || 0) * Math.PI / 180;
+      this.r22 = Math.cos(b) * Math.cos(g);
+      this.recordSample(e.webkitCompassHeading, false);
+    };
+    window.addEventListener('deviceorientation', handler, true);
+    this.cleanupFn = () => window.removeEventListener('deviceorientation', handler, true);
+    this.watchdogTimer = setTimeout(() => {
+      if (tok !== this.runToken || gotReading) return;
+      this.teardown();
+      if (cascade) this.tryDOStd(tok, true); else this.emitStatus('sim');
+    }, 1000);
+  },
+
+  forceChannel(ch){
+    const tok = ++this.runToken;
+    this.hasInitSmooth = false;
+    if (ch === 'absSensor') this.tryAbsSensor(tok, false);
+    else if (ch === 'doAbs') this.tryDOAbs(tok, false);
+    else if (ch === 'doStd') this.tryDOStd(tok, false);
+    else if (ch === 'webkit') this.tryWebkit(tok, false);
+    else this.takeOverSim(this.heading);
+  }
+};
+
+/* ============================================================================
+ * MODULE 5: APPLICATION STATE, SCENE PRESETS & SYNTHESIS CACHE
+ * ========================================================================== */
+const now = new Date();
+const defaultTodayStr = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`;
+
+const SCENE_PRESETS = {
+  daily: {
+    rings: { 1: true, 2: true, 3: true, 4: true, 5: true },
+    enableIds: ['natal_guiren','natal_lu','natal_wenchang','yr_suipo','mo_yuepo','mo_shengqi','dy_xunkong','dy_yinfu','astro_sun','astro_moon','astro_jupiter']
+  },
+  build: {
+    rings: { 1: true, 2: true, 3: true, 4: true, 5: true },
+    enableIds: [
+      'natal_guiren','natal_lu','natal_wenchang',
+      'yr_taisui','yr_suipo','yr_sansha','yr_tianguan','yr_diguan','yr_feilian','yr_lishi','yr_dutian','yr_yinfu',
+      'mo_yuejian','mo_yuepo','mo_sansha','mo_tianguan','mo_diguan','mo_shengqi','mo_siqi','mo_yinfu',
+      'dy_yinfu','dy_xunkong','hr_yinfu',
+      'astro_sun','astro_moon','astro_jupiter'
+    ]
+  }
+};
+
+const AppState = {
+  natal: {
+    date: SafeStore.get('xs_natal_date', '1990-06-15'),
+    time: SafeStore.get('xs_natal_time', '12:00'),
+    quickStem: SafeStore.get('xs_quick_stem', ''),
+    stemSource: SafeStore.get('xs_stem_src', 'day'),
+    guirenMethod: SafeStore.get('xs_guiren_m', 'classical'),
+    pillars: null
+  },
+  transit: {
+    date: defaultTodayStr,
+    shichenIdx: CalendarEngine.hourToShichenIdx(now.getHours()),
+    isLive: true,
+    astroTimeMode: SafeStore.get('xs_astro_tmode', 'day00'), // 'day00' | 'exact'
+    pillars: null,
+    astro: null,
+    xiangzhu: { clashes: [], bonuses: [] }
+  },
+  branchSpanMode: SafeStore.get('xs_span_mode', '30'),
+  ringEnabled: SafeStore.get('xs_rings_v2', { 1: true, 2: true, 3: true, 4: true, 5: true }),
+  enabledLayers: {},
+  computedLayers: [],
+  synthesisSlices: [], // 48 exact 7.5° slices for Ring 5 & Steering
+  activeScene: SafeStore.get('xs_scene_v2', 'daily'),
+  arCalloutOn: SafeStore.get('xs_ar_callout', true),
+  compassBig: false,
+  capsuleExpanded: false,
+  capsuleHidden: false,
+  camActive: false,
+  camStream: null
+};
+
+(function initLayerState(){
+  const saved = SafeStore.get('xs_layers_v2', null);
+  LAYER_REGISTRY.forEach(p => {
+    AppState.enabledLayers[p.id] = (saved && typeof saved[p.id] === 'boolean') ? saved[p.id] : !!p.enabledByDefault;
+  });
+  // URL parameter routing: ?mode=guiren|lu|wenchang|all
+  try {
+    const mode = new URLSearchParams(window.location.search).get('mode');
+    if (mode && ['guiren','lu','wenchang','all'].includes(mode)) {
+      applyModePreset(mode, false);
+    }
+  } catch (_) {}
+})();
+
+function applyScenePreset(sceneKey){
+  const sc = SCENE_PRESETS[sceneKey];
+  if (!sc) return;
+  AppState.activeScene = sceneKey;
+  AppState.ringEnabled = { ...sc.rings };
+  const set = new Set(sc.enableIds);
+  LAYER_REGISTRY.forEach(p => { AppState.enabledLayers[p.id] = set.has(p.id); });
+  SafeStore.set('xs_scene_v2', sceneKey);
+  SafeStore.set('xs_rings_v2', AppState.ringEnabled);
+  SafeStore.set('xs_layers_v2', AppState.enabledLayers);
+}
+
+function applyModePreset(mode, pushUrl){
+  AppState.ringEnabled[2] = true;
+  AppState.enabledLayers.natal_guiren = (mode === 'all' || mode === 'guiren');
+  AppState.enabledLayers.natal_lu = (mode === 'all' || mode === 'lu');
+  AppState.enabledLayers.natal_wenchang = (mode === 'all' || mode === 'wenchang');
+  AppState.activeScene = 'custom';
+  SafeStore.set('xs_rings_v2', AppState.ringEnabled);
+  SafeStore.set('xs_layers_v2', AppState.enabledLayers);
+  if (pushUrl) {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set('mode', mode);
+      window.history.replaceState(null, '', u.toString());
+    } catch (_) {}
+  }
+}
+
+function recomputeContextsAndLayers(){
+  const [ny, nm, nd] = (AppState.natal.date || '1990-06-15').split('-').map(Number);
+  const [nh, nmin] = (AppState.natal.time || '12:00').split(':').map(Number);
+  AppState.natal.pillars = CalendarEngine.calcPillars(ny || 1990, nm || 6, nd || 15, isNaN(nh) ? 12 : nh, isNaN(nmin) ? 0 : nmin);
+
+  if (AppState.transit.isLive) {
+    const tNow = new Date();
+    AppState.transit.date = `${tNow.getFullYear()}-${pad2(tNow.getMonth()+1)}-${pad2(tNow.getDate())}`;
+    AppState.transit.shichenIdx = CalendarEngine.hourToShichenIdx(tNow.getHours());
+  }
+  const [ty, tm, td] = (AppState.transit.date || defaultTodayStr).split('-').map(Number);
+  const repHour = AppState.transit.shichenIdx === 0 ? 0 : (AppState.transit.shichenIdx * 2);
+  AppState.transit.pillars = CalendarEngine.calcPillars(ty, tm, td, repHour, 30);
+  AppState.transit.astro = AstroEngine.calcAll(AppState.transit);
+  AppState.transit.xiangzhu = CalendarEngine.analyzeNatalTransit(AppState.natal, AppState.transit);
+
+  AppState.computedLayers = LAYER_REGISTRY.map(plugin => {
+    const enabled = !!AppState.enabledLayers[plugin.id];
+    let rawHits = [];
+    try { rawHits = plugin.calc(AppState.natal, AppState.transit) || []; } catch (_) { rawHits = []; }
+    const sectors = rawHits.map(h => {
+      const sec = SpaceEngine.buildSector(h.target, h.unit || plugin.unit, AppState.branchSpanMode);
+      if (!sec) return null;
+      return { ...sec, glyph: h.glyph || plugin.glyph || '', label: h.label || `${plugin.name}(${h.target})`, short: h.short || h.target };
+    }).filter(Boolean);
+    return { plugin, enabled, sectors };
+  });
+
+  // Precompute 48 exact 7.5° slices for Ring 5 Decision Halo & AR Steering
+  AppState.synthesisSlices = [];
+  for (let k = 0; k < 48; k++) {
+    const start = k * 7.5;
+    const end = (k + 1) * 7.5;
+    const mid = start + 3.75;
+    const ev = ConflictResolver.evaluate(mid, AppState.computedLayers, AppState.ringEnabled);
+    AppState.synthesisSlices.push({ start, end, mid, state: ev.state, badge: ev.badge });
+  }
+
+  CompassRenderer.rebuildSectors();
+  UIController.syncStaticUI();
+  UIController.renderFrame(SensorEngine.heading);
+}
+
+/* ============================================================================
+ * MODULE 6: 5-RING CONCENTRIC SVG COMPASS & AR HORIZON RENDERER
+ * ========================================================================== */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, parent){
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+
+function annularArcPath(cx, cy, rIn, rOut, startDeg, endDeg){
+  let sweep = normDeg(endDeg - startDeg);
+  if (sweep < 0.1) sweep = 0.1;
+  const a0 = (startDeg - 90) * Math.PI / 180;
+  const a1 = (startDeg + sweep - 90) * Math.PI / 180;
+  const large = sweep > 180 ? 1 : 0;
+  const x0 = cx + rOut * Math.cos(a0), y0 = cy + rOut * Math.sin(a0);
+  const x1 = cx + rOut * Math.cos(a1), y1 = cy + rOut * Math.sin(a1);
+  const x2 = cx + rIn * Math.cos(a1),  y2 = cy + rIn * Math.sin(a1);
+  const x3 = cx + rIn * Math.cos(a0),  y3 = cy + rIn * Math.sin(a0);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${rOut} ${rOut} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)} A${rIn} ${rIn} 0 ${large} 0 ${x3.toFixed(2)} ${y3.toFixed(2)} Z`;
+}
+
+const CompassRenderer = {
+  dialGroup: null,
+  sectorGroup: null,
+  planetBadgeGroup: null,
+
+  init(){
+    const svg = document.getElementById('compassSvg');
+    svg.innerHTML = '';
+
+    // Static outer bezel
+    svgEl('circle', { cx:180, cy:180, r:177, fill:'rgba(8,13,20,.90)', stroke:'rgba(245,196,81,.36)', 'stroke-width':'1.2' }, svg);
+
+    // Rotating dial
+    this.dialGroup = svgEl('g', { id:'compassDial' }, svg);
+    this.sectorGroup = svgEl('g', { id:'compassSectors' }, this.dialGroup);
+
+    // 5 Concentric Ring Boundaries:
+    // Ring 5 (Decision Halo): 167..175
+    // Ring 4 (24M + 7 Governors): 134..166
+    // Ring 3 (Transit Shensha 12B): 106..134
+    // Ring 2 (Natal Good 12B): 76..106
+    // Ring 1 (Bagua 8 Sha): 46..76
+    // Center Pool: 0..46
+    const ringRadii = [
+      [166, 'rgba(245,196,81,.48)', '1'],
+      [134, 'rgba(245,196,81,.36)', '0.9'],
+      [106, 'rgba(56,189,248,.34)', '0.9'],
+      [76,  'rgba(245,196,81,.34)', '0.9'],
+      [46,  'rgba(255,255,255,.16)', '0.8']
+    ];
+    svgEl('circle', { cx:180, cy:180, r:46, fill:'rgba(6,10,15,.88)' }, this.dialGroup);
+    ringRadii.forEach(([r, st, sw]) => {
+      svgEl('circle', { cx:180, cy:180, r, fill:'none', stroke:st, 'stroke-width':sw }, this.dialGroup);
+    });
+
+    // Ring 4: 24 Mountains dividers & glyphs
+    for (let i = 0; i < 24; i++) {
+      const mid = i * 15;
+      const radB = (mid - 7.5 - 90) * Math.PI / 180;
+      svgEl('line', {
+        x1: (180 + 134 * Math.cos(radB)).toFixed(1), y1: (180 + 134 * Math.sin(radB)).toFixed(1),
+        x2: (180 + 166 * Math.cos(radB)).toFixed(1), y2: (180 + 166 * Math.sin(radB)).toFixed(1),
+        stroke: 'rgba(255,255,255,.16)', 'stroke-width': '0.7'
+      }, this.dialGroup);
+
+      const radM = (mid - 90) * Math.PI / 180;
+      const tx = 180 + 148 * Math.cos(radM), ty = 180 + 148 * Math.sin(radM);
+      const txt = svgEl('text', {
+        x: tx.toFixed(1), y: ty.toFixed(1),
+        fill: DIAG_MIDS.includes(mid) ? '#ff8a93' : '#e2e8f0',
+        'font-size': '11.5', 'font-family': 'Songti SC, Noto Serif SC, serif', 'font-weight': '700',
+        'text-anchor': 'middle', 'dominant-baseline': 'central',
+        transform: `rotate(${mid} ${tx.toFixed(1)} ${ty.toFixed(1)})`
+      }, this.dialGroup);
+      txt.textContent = M24[i];
+    }
+
+    // Ring 2 & 3: 12 Branches dividers & glyphs (glyphs sit in Ring 2)
+    for (let i = 0; i < 12; i++) {
+      const mid = i * 30;
+      const radB = (mid - 15 - 90) * Math.PI / 180;
+      svgEl('line', {
+        x1: (180 + 76 * Math.cos(radB)).toFixed(1), y1: (180 + 76 * Math.sin(radB)).toFixed(1),
+        x2: (180 + 134 * Math.cos(radB)).toFixed(1), y2: (180 + 134 * Math.sin(radB)).toFixed(1),
+        stroke: 'rgba(245,196,81,.24)', 'stroke-width': '0.8'
+      }, this.dialGroup);
+
+      const radM = (mid - 90) * Math.PI / 180;
+      const tx = 180 + 91 * Math.cos(radM), ty = 180 + 91 * Math.sin(radM);
+      const txt = svgEl('text', {
+        x: tx.toFixed(1), y: ty.toFixed(1),
+        fill: '#f5c451', 'font-size': '12.5', 'font-family': 'Songti SC, Noto Serif SC, serif', 'font-weight': '700',
+        'text-anchor': 'middle', 'dominant-baseline': 'central',
+        transform: `rotate(${mid} ${tx.toFixed(1)} ${ty.toFixed(1)})`
+      }, this.dialGroup);
+      txt.textContent = ZHI[i];
+    }
+
+    // Ring 1: Bagua 8 dividers & glyphs
+    for (let i = 0; i < 8; i++) {
+      const mid = i * 45;
+      const radB = (mid - 22.5 - 90) * Math.PI / 180;
+      svgEl('line', {
+        x1: (180 + 46 * Math.cos(radB)).toFixed(1), y1: (180 + 46 * Math.sin(radB)).toFixed(1),
+        x2: (180 + 76 * Math.cos(radB)).toFixed(1), y2: (180 + 76 * Math.sin(radB)).toFixed(1),
+        stroke: 'rgba(255,255,255,.16)', 'stroke-width': '0.7'
+      }, this.dialGroup);
+
+      const radM = (mid - 90) * Math.PI / 180;
+      const tx = 180 + 61 * Math.cos(radM), ty = 180 + 61 * Math.sin(radM);
+      const txt = svgEl('text', {
+        x: tx.toFixed(1), y: ty.toFixed(1),
+        fill: 'rgba(186,202,222,.82)', 'font-size': '11', 'font-family': 'Songti SC, Noto Serif SC, serif', 'font-weight': '600',
+        'text-anchor': 'middle', 'dominant-baseline': 'central',
+        transform: `rotate(${mid} ${tx.toFixed(1)} ${ty.toFixed(1)})`
+      }, this.dialGroup);
+      txt.textContent = GUA8[i];
+    }
+
+    // 4-Diagonal Red Dashed Lines
+    DIAG_MIDS.forEach(d => {
+      const rad = (d - 90) * Math.PI / 180;
+      svgEl('line', {
+        x1: (180 + 46 * Math.cos(rad)).toFixed(1), y1: (180 + 46 * Math.sin(rad)).toFixed(1),
+        x2: (180 + 166 * Math.cos(rad)).toFixed(1), y2: (180 + 166 * Math.sin(rad)).toFixed(1),
+        stroke: 'rgba(255,77,90,.62)', 'stroke-width': '1.1', 'stroke-dasharray': '3 3'
+      }, this.dialGroup);
+    });
+
+    // Planet marker badges rendered above Ring 4 glyphs
+    this.planetBadgeGroup = svgEl('g', { id:'planetBadges' }, this.dialGroup);
+
+    // Fixed Red 天心十道 (Tianxin Crosshair) overlay
+    const crossG = svgEl('g', { id:'tianxinCross' }, svg);
+    svgEl('line', { x1:180, y1:2, x2:180, y2:358, stroke:'rgba(255,64,80,.86)', 'stroke-width':'1.3' }, crossG);
+    svgEl('line', { x1:2, y1:180, x2:358, y2:180, stroke:'rgba(255,64,80,.52)', 'stroke-width':'0.9' }, crossG);
+    svgEl('polygon', { points:'180,1 174,12 186,12', fill:'#ff4d5a' }, crossG);
+    svgEl('circle', { cx:180, cy:180, r:4.5, fill:'#060a0f', stroke:'#ff4d5a', 'stroke-width':'1.6' }, crossG);
+  },
+
+  rebuildSectors(){
+    if (!this.sectorGroup || !this.planetBadgeGroup) return;
+    this.sectorGroup.innerHTML = '';
+    this.planetBadgeGroup.innerHTML = '';
+
+    const RING_RADII = {
+      1: [46, 76],
+      2: [76, 106],
+      3: [106, 134],
+      4: [134, 166]
+    };
+
+    // Group Ring 4 planet badges by mountain so co-located planets fan out cleanly
+    const planetsByM24 = {};
+
+    AppState.computedLayers.forEach(entry => {
+      const rNum = entry.plugin.ring;
+      if (!entry.enabled || !AppState.ringEnabled[rNum]) return;
+      const [rIn, rOut] = RING_RADII[rNum] || [134, 166];
+      const col = entry.plugin.color;
+      const isBad = entry.plugin.polarity === 'bad';
+
+      entry.sectors.forEach(s => {
+        // Draw colored arc strictly inside its assigned ring
+        const op = isBad ? '0.32' : (entry.plugin.polarity === 'neutral' ? '0.24' : '0.38');
+        svgEl('path', {
+          d: annularArcPath(180, 180, rIn, rOut, s.start, s.end),
+          fill: col, 'fill-opacity': op
+        }, this.sectorGroup);
+
+        // If Ring 2/3 is in 30° interlocking mode, mark core 15° slightly stronger
+        if ((rNum === 2 || rNum === 3) && s.unit === 'b12' && AppState.branchSpanMode === '30') {
+          svgEl('path', {
+            d: annularArcPath(180, 180, rIn, rOut, normDeg(s.center - 7.5), normDeg(s.center + 7.5)),
+            fill: col, 'fill-opacity': '0.18'
+          }, this.sectorGroup);
+        }
+
+        // Collect Ring 4 planet markers
+        if (rNum === 4 && s.glyph) {
+          if (!planetsByM24[s.token]) planetsByM24[s.token] = [];
+          planetsByM24[s.token].push({ center: s.center, glyph: s.glyph, color: col });
+        }
+      });
+    });
+
+    // Draw Ring 4 Planet Mini-Badges on outer rim of Ring 4 (r=160)
+    Object.values(planetsByM24).forEach(list => {
+      const n = list.length;
+      list.forEach((p, idx) => {
+        const angOffset = n === 1 ? 0 : ((idx - (n - 1) / 2) * 5.2);
+        const deg = normDeg(p.center + angOffset);
+        const rad = (deg - 90) * Math.PI / 180;
+        const bx = 180 + 160 * Math.cos(rad), by = 180 + 160 * Math.sin(rad);
+        svgEl('circle', {
+          cx: bx.toFixed(1), cy: by.toFixed(1), r: '6.2',
+          fill: '#080e16', stroke: p.color, 'stroke-width': '1.2'
+        }, this.planetBadgeGroup);
+        const t = svgEl('text', {
+          x: bx.toFixed(1), y: by.toFixed(1),
+          fill: p.color, 'font-size': '7.6', 'font-weight': '700',
+          'font-family': 'Songti SC, Noto Serif SC, serif',
+          'text-anchor': 'middle', 'dominant-baseline': 'central',
+          transform: `rotate(${deg} ${bx.toFixed(1)} ${by.toFixed(1)})`
+        }, this.planetBadgeGroup);
+        t.textContent = p.glyph;
+      });
+    });
+
+    // Ring 5: Outer Synthesis Decision Halo (r=167.5..175)
+    if (AppState.ringEnabled[5]) {
+      const stateColor = {
+        golden: '#d98aff',
+        good: '#f5c451',
+        weakened: '#94a3b8',
+        conflict: '#ff9436',
+        bad: '#ff4d5a'
+      };
+      AppState.synthesisSlices.forEach(sl => {
+        const col = stateColor[sl.state];
+        if (!col) return;
+        svgEl('path', {
+          d: annularArcPath(180, 180, 167.5, 175, sl.start, sl.end),
+          fill: col,
+          'fill-opacity': sl.state === 'golden' ? '0.92' : (sl.state === 'weakened' ? '0.52' : '0.78')
+        }, this.sectorGroup);
+      });
+    }
+  },
+
+  rotate(heading){
+    if (!this.dialGroup) return;
+    this.dialGroup.setAttribute('transform', `rotate(${(-heading).toFixed(2)} 180 180)`);
+  }
+};
+
+const HorizonRenderer = {
+  b12El: null, m24El: null, b12Nodes: [], m24Nodes: [],
+
+  init(){
+    this.b12El = document.getElementById('horizonB12');
+    this.m24El = document.getElementById('horizonM24');
+    this.b12El.innerHTML = '';
+    this.m24El.innerHTML = '';
+
+    this.b12Nodes = ZHI.map((z, i) => {
+      const el = document.createElement('div');
+      el.className = 'h-tick';
+      el.innerHTML = `<span class="h-lbl">${z}</span><div class="h-dots"></div>`;
+      this.b12El.appendChild(el);
+      return { deg: i * 30, el, dotsEl: el.querySelector('.h-dots') };
+    });
+
+    this.m24Nodes = M24.map((m, i) => {
+      const deg = i * 15;
+      const el = document.createElement('div');
+      el.className = 'h-tick' + (DIAG_MIDS.includes(deg) ? ' diag' : '');
+      el.innerHTML = `<div class="h-line"></div><span class="h-lbl">${m}</span><div class="h-dots"></div>`;
+      this.m24El.appendChild(el);
+      return { deg, el, dotsEl: el.querySelector('.h-dots') };
+    });
+  },
+
+  refreshDots(){
+    const dotHtmlFor = (deg) => {
+      const cols = [];
+      for (const entry of AppState.computedLayers) {
+        if (!entry.enabled || !AppState.ringEnabled[entry.plugin.ring]) continue;
+        if (entry.sectors.some(s => SpaceEngine.containsDeg(deg, s))) {
+          cols.push(entry.plugin.color);
+        }
+      }
+      return cols.slice(0, 5).map(c => `<span class="h-dot" style="background:${c}"></span>`).join('');
+    };
+    this.b12Nodes.forEach(n => { n.dotsEl.innerHTML = dotHtmlFor(n.deg); });
+    this.m24Nodes.forEach(n => { n.dotsEl.innerHTML = dotHtmlFor(n.deg); });
+  },
+
+  update(heading){
+    const w = this.m24El.clientWidth || 360;
+    const pxPerDeg = w / 120;
+    const halfW = w / 2;
+    const place = (nodes) => {
+      for (const n of nodes) {
+        const diff = angDiff(n.deg, heading);
+        if (Math.abs(diff) > 68) {
+          n.el.style.display = 'none';
+        } else {
+          n.el.style.display = 'flex';
+          n.el.style.left = (halfW + diff * pxPerDeg).toFixed(1) + 'px';
+        }
+      }
+    };
+    place(this.b12Nodes);
+    place(this.m24Nodes);
+  }
+};
+
+/* ============================================================================
+ * MODULE 7: UI CONTROLLER, AR STEERING, CAMERA & INTERACTIONS
+ * ========================================================================== */
+const UIController = {
+  steerTargetDeg: null,
+
+  init(){
+    CompassRenderer.init();
+    HorizonRenderer.init();
+
+    if (!window.isSecureContext) document.getElementById('httpsNotice').classList.add('show');
+    document.getElementById('dismissHttps').onclick = () => document.getElementById('httpsNotice').classList.remove('show');
+
+    // Modals close
+    document.querySelectorAll('[data-close]').forEach(btn => {
+      btn.onclick = () => document.getElementById(btn.dataset.close).classList.remove('show');
+    });
+    document.querySelectorAll('.modal-mask').forEach(mask => {
+      mask.addEventListener('click', e => { if (e.target === mask) mask.classList.remove('show'); });
+    });
+
+    // Top Buttons
+    document.getElementById('openSetupBtn').onclick = () => {
+      this.renderSetupModal();
+      document.getElementById('setupModal').classList.add('show');
+    };
+    document.getElementById('clashBanner').onclick = () => {
+      this.renderSetupModal();
+      document.querySelectorAll('.stab').forEach(t => t.classList.toggle('on', t.dataset.tab === 'transitTab'));
+      document.getElementById('natalTab').style.display = 'none';
+      document.getElementById('transitTab').style.display = 'block';
+      document.getElementById('setupModal').classList.add('show');
+    };
+    document.getElementById('openLayersBtn').onclick = () => {
+      this.renderLayersModal();
+      document.getElementById('layersModal').classList.add('show');
+    };
+    document.getElementById('diagBtn').onclick = () => {
+      this.renderDiagModal();
+      document.getElementById('diagModal').classList.add('show');
+    };
+    document.getElementById('camToggleBtn').onclick = () => this.toggleCamera();
+
+    // Scene Presets (Daily / Build)
+    document.querySelectorAll('#modeStrip .scene-btn[data-scene]').forEach(btn => {
+      btn.onclick = () => {
+        applyScenePreset(btn.dataset.scene);
+        recomputeContextsAndLayers();
+      };
+    });
+
+    // Natal Quick Modes
+    document.querySelectorAll('#modeStrip .mode-chip[data-mode]').forEach(btn => {
+      btn.onclick = () => {
+        applyModePreset(btn.dataset.mode, true);
+        recomputeContextsAndLayers();
+      };
+    });
+
+    // AR Callout Toggle Chip
+    document.getElementById('arHudToggleChip').onclick = () => {
+      AppState.arCalloutOn = !AppState.arCalloutOn;
+      SafeStore.set('xs_ar_callout', AppState.arCalloutOn);
+      this.syncStaticUI();
+      this.renderFrame(SensorEngine.heading);
+    };
+
+    // 15° / 30° quick toggle
+    document.getElementById('spanToggleChip').onclick = () => {
+      AppState.branchSpanMode = AppState.branchSpanMode === '30' ? '15' : '30';
+      SafeStore.set('xs_span_mode', AppState.branchSpanMode);
+      recomputeContextsAndLayers();
+    };
+
+    // Compass Size Toggle
+    document.getElementById('compassSizeBtn').onclick = () => {
+      AppState.compassBig = !AppState.compassBig;
+      document.body.classList.toggle('compass-big', AppState.compassBig);
+      document.getElementById('compassSizeBtn').textContent = AppState.compassBig ? '⤡' : '⤢';
+    };
+
+    // Steering arrows click -> jump to nearest clean good azimuth
+    const onSteerClick = () => {
+      if (typeof this.steerTargetDeg === 'number') {
+        SensorEngine.takeOverSim(this.steerTargetDeg);
+      }
+    };
+    document.getElementById('steerLeft').onclick = onSteerClick;
+    document.getElementById('steerRight').onclick = onSteerClick;
+
+    // iOS Permission Gesture Button
+    document.getElementById('iosPermBtn').onclick = async () => {
+      await SensorEngine.requestIOSPermissionAndStart();
+      document.getElementById('iosPermBtn').classList.remove('show');
+    };
+
+    // Status Capsule expand / hide / restore
+    document.getElementById('capHeadToggle').onclick = (e) => {
+      if (e && e.target.closest('#capHideBtn')) return;
+      AppState.capsuleExpanded = !AppState.capsuleExpanded;
+      document.getElementById('statusCapsule').classList.toggle('expanded', AppState.capsuleExpanded);
+      document.getElementById('capExpandBtn').textContent = AppState.capsuleExpanded ? '▴' : '▾';
+    };
+    document.getElementById('capHideBtn').onclick = (e) => {
+      e.stopPropagation();
+      AppState.capsuleHidden = true;
+      document.getElementById('statusCapsule').classList.add('hidden');
+      document.getElementById('restoreCapsuleBtn').classList.add('show');
+    };
+    document.getElementById('restoreCapsuleBtn').onclick = () => {
+      AppState.capsuleHidden = false;
+      document.getElementById('statusCapsule').classList.remove('hidden');
+      document.getElementById('restoreCapsuleBtn').classList.remove('show');
+    };
+
+    // Setup Modal Tabs
+    document.querySelectorAll('.stab').forEach(tab => {
+      tab.onclick = () => {
+        document.querySelectorAll('.stab').forEach(t => t.classList.remove('on'));
+        tab.classList.add('on');
+        document.getElementById('natalTab').style.display = tab.dataset.tab === 'natalTab' ? 'block' : 'none';
+        document.getElementById('transitTab').style.display = tab.dataset.tab === 'transitTab' ? 'block' : 'none';
+      };
+    });
+
+    // Natal Inputs
+    const natalDateEl = document.getElementById('natalDateInput');
+    const natalTimeEl = document.getElementById('natalTimeInput');
+    natalDateEl.value = AppState.natal.date;
+    natalTimeEl.value = AppState.natal.time;
+    const onNatalChange = () => {
+      AppState.natal.date = natalDateEl.value || '1990-06-15';
+      AppState.natal.time = natalTimeEl.value || '12:00';
+      AppState.natal.quickStem = '';
+      SafeStore.set('xs_natal_date', AppState.natal.date);
+      SafeStore.set('xs_natal_time', AppState.natal.time);
+      SafeStore.set('xs_quick_stem', '');
+      recomputeContextsAndLayers();
+      this.renderSetupModal();
+    };
+    natalDateEl.onchange = onNatalChange;
+    natalTimeEl.onchange = onNatalChange;
+
+    const stemGrid = document.getElementById('quickStemGrid');
+    GAN.forEach(g => {
+      const b = document.createElement('button');
+      b.className = 'stem-btn';
+      b.textContent = g;
+      b.dataset.stem = g;
+      b.onclick = () => {
+        AppState.natal.quickStem = (AppState.natal.quickStem === g) ? '' : g;
+        SafeStore.set('xs_quick_stem', AppState.natal.quickStem);
+        recomputeContextsAndLayers();
+        this.renderSetupModal();
+      };
+      stemGrid.appendChild(b);
+    });
+
+    const bindSeg = (groupId, onPick) => {
+      document.querySelectorAll(`#${groupId} .seg-btn`).forEach(btn => {
+        btn.onclick = () => { onPick(btn.dataset.val); recomputeContextsAndLayers(); this.renderSetupModal(); };
+      });
+    };
+    bindSeg('stemSourceGroup', v => { AppState.natal.stemSource = v; SafeStore.set('xs_stem_src', v); });
+    bindSeg('guirenMethodGroup', v => { AppState.natal.guirenMethod = v; SafeStore.set('xs_guiren_m', v); });
+    bindSeg('spanModeGroup', v => { AppState.branchSpanMode = v; SafeStore.set('xs_span_mode', v); });
+    bindSeg('astroTimeModeGroup', v => { AppState.transit.astroTimeMode = v; SafeStore.set('xs_astro_tmode', v); });
+
+    // Transit Date
+    const tDateEl = document.getElementById('transitDateInput');
+    tDateEl.onchange = () => {
+      AppState.transit.isLive = false;
+      AppState.transit.date = tDateEl.value || defaultTodayStr;
+      recomputeContextsAndLayers();
+      this.renderSetupModal();
+    };
+    document.getElementById('transitNowBtn').onclick = () => {
+      AppState.transit.isLive = true;
+      recomputeContextsAndLayers();
+      this.renderSetupModal();
+    };
+
+    // Simulation Slider & Drag Layer
+    const simSlider = document.getElementById('simSlider');
+    simSlider.addEventListener('input', () => SensorEngine.takeOverSim(parseFloat(simSlider.value)));
+    document.getElementById('resumeSensorBtn').onclick = () => SensorEngine.startAutoWaterfall();
+
+    const dragLayer = document.getElementById('dragLayer');
+    let dragging = false, lastX = 0;
+    dragLayer.addEventListener('pointerdown', e => { dragLayer.setPointerCapture(e.pointerId); dragging = true; lastX = e.clientX; });
+    dragLayer.addEventListener('pointermove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      lastX = e.clientX;
+      if (Math.abs(dx) < 0.2) return;
+      SensorEngine.takeOverSim(normDeg(SensorEngine.heading - dx * 0.45));
+    });
+    const endDrag = () => { dragging = false; };
+    dragLayer.addEventListener('pointerup', endDrag);
+    dragLayer.addEventListener('pointercancel', endDrag);
+
+    // Diagnostics Modal Controls
+    const offsetSlider = document.getElementById('offsetSlider');
+    SensorEngine.offsetDeg = SafeStore.get('xs_mag_offset', 0);
+    offsetSlider.value = SensorEngine.offsetDeg;
+    document.getElementById('offsetValLbl').textContent = `${SensorEngine.offsetDeg >= 0 ? '+' : ''}${SensorEngine.offsetDeg.toFixed(1)}°`;
+    offsetSlider.oninput = () => {
+      SensorEngine.offsetDeg = parseFloat(offsetSlider.value);
+      SafeStore.set('xs_mag_offset', SensorEngine.offsetDeg);
+      document.getElementById('offsetValLbl').textContent = `${SensorEngine.offsetDeg >= 0 ? '+' : ''}${SensorEngine.offsetDeg.toFixed(1)}°`;
+      if (SensorEngine.activeSource !== 'sim') SensorEngine.recordSample(SensorEngine.rawDeg, false);
+    };
+
+    document.querySelectorAll('#channelBtns .ch-btn').forEach(btn => {
+      btn.onclick = () => { SensorEngine.forceChannel(btn.dataset.ch); this.renderDiagModal(); };
+    });
+    document.getElementById('autoWaterfallBtn').onclick = () => { SensorEngine.startAutoWaterfall(); this.renderDiagModal(); };
+
+    SensorEngine.onUpdate = (deg) => this.renderFrame(deg);
+    SensorEngine.onStatus = (src) => this.updateSensorBadge(src);
+  },
+
+  async toggleCamera(){
+    const btn = document.getElementById('camToggleBtn');
+    const vid = document.getElementById('camVideo');
+    const radar = document.getElementById('cyberRadar');
+
+    if (AppState.camActive) {
+      if (AppState.camStream) AppState.camStream.getTracks().forEach(t => t.stop());
+      AppState.camStream = null;
+      AppState.camActive = false;
+      vid.srcObject = null;
+      vid.classList.remove('active');
+      radar.classList.remove('dimmed');
+      btn.classList.remove('on');
+      btn.textContent = '📷 实景';
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('当前浏览器环境不支持调用后置摄像头（请确认使用 HTTPS 访问）。');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      AppState.camStream = stream;
+      AppState.camActive = true;
+      vid.srcObject = stream;
+      await vid.play();
+      vid.classList.add('active');
+      radar.classList.add('dimmed');
+      btn.classList.add('on');
+      btn.textContent = '📷 实景中';
+    } catch (_) {
+      alert('无法开启后置摄像头，已保持低功耗赛博雷达背景。');
+    }
+  },
+
+  updateSensorBadge(src){
+    const dot = document.getElementById('sensorDot');
+    const lbl = document.getElementById('sensorShort');
+    const resumeBtn = document.getElementById('resumeSensorBtn');
+    const iosBtn = document.getElementById('iosPermBtn');
+    const map = {
+      absSensor: ['live', '3D传感'], doAbs: ['live', '绝对方向'], doStd: ['live', '方向传感'],
+      webkit: ['live', 'iOS罗盘'], sim: ['sim', '模拟模式'], 'ios-wait': ['sim', '待授权']
+    };
+    const [cls, text] = map[src] || ['sim', '模拟'];
+    dot.className = 'sensor-dot ' + cls;
+    lbl.textContent = text;
+    resumeBtn.classList.toggle('show', src === 'sim' || src === 'ios-wait');
+    iosBtn.classList.toggle('show', src === 'ios-wait');
+    this.updateDiagLive();
+  },
+
+  syncStaticUI(){
+    const np = AppState.natal.pillars;
+    const tp = AppState.transit.pillars;
+    const natalTag = AppState.natal.quickStem
+      ? `快选${AppState.natal.quickStem}干`
+      : (AppState.natal.stemSource === 'year' ? `年干${np.yGan}` : (AppState.natal.stemSource === 'both' ? `日${np.dGan}年${np.yGan}` : `日干${np.dGan}`));
+    document.getElementById('topCtxBadge').textContent = `${natalTag} · ${tp.yGZ}年${tp.mGZ}月`;
+    document.getElementById('topCtxSub').textContent = `${tp.dGZ}日 ${tp.hGZ}时 · ${tp.jianchu}日`;
+
+    const activeCnt = AppState.computedLayers.filter(c => c.enabled && AppState.ringEnabled[c.plugin.ring]).length;
+    document.getElementById('activeLayerCount').textContent = activeCnt;
+
+    // Scene buttons highlight
+    document.querySelectorAll('#modeStrip .scene-btn[data-scene]').forEach(btn => {
+      btn.classList.toggle('on', btn.dataset.scene === AppState.activeScene);
+    });
+
+    // Natal mode buttons highlight
+    const gOn = AppState.ringEnabled[2] && AppState.enabledLayers.natal_guiren;
+    const lOn = AppState.ringEnabled[2] && AppState.enabledLayers.natal_lu;
+    const wOn = AppState.ringEnabled[2] && AppState.enabledLayers.natal_wenchang;
+    const inferred = (gOn && lOn && wOn) ? 'all' : (gOn && !lOn && !wOn ? 'guiren' : (!gOn && lOn && !wOn ? 'lu' : (!gOn && !lOn && wOn ? 'wenchang' : '')));
+    document.querySelectorAll('#modeStrip .mode-chip[data-mode]').forEach(btn => {
+      btn.classList.toggle('on', btn.dataset.mode === inferred);
+    });
+
+    const arChip = document.getElementById('arHudToggleChip');
+    arChip.textContent = AppState.arCalloutOn ? 'AR直报:开' : 'AR直报:关';
+    arChip.classList.toggle('on', AppState.arCalloutOn);
+
+    const spanChip = document.getElementById('spanToggleChip');
+    spanChip.textContent = AppState.branchSpanMode === '30' ? '30°穿插' : '15°严格';
+    spanChip.classList.toggle('on', AppState.branchSpanMode === '15');
+
+    // Global Natal × Transit Clash Banner
+    const clashBanner = document.getElementById('clashBanner');
+    const clashes = AppState.transit.xiangzhu.clashes;
+    if (clashes.length > 0) {
+      document.getElementById('clashBannerText').textContent = `⚠ 相主警示：${clashes[0]}` + (clashes.length > 1 ? `（共${clashes.length}项）` : '');
+      clashBanner.classList.add('show');
+    } else {
+      clashBanner.classList.remove('show');
+    }
+
+    HorizonRenderer.refreshDots();
+    this.renderQuickJumps();
+  },
+
+  renderQuickJumps(){
+    const host = document.getElementById('capJumps');
+    const chips = [];
+    AppState.computedLayers.forEach(entry => {
+      if (!entry.enabled || !AppState.ringEnabled[entry.plugin.ring]) return;
+      if (entry.plugin.polarity !== 'good') return;
+      entry.sectors.forEach(s => {
+        chips.push({ deg: s.center, color: entry.plugin.color, text: `${entry.plugin.name.replace('临山','')}·${s.short}` });
+      });
+    });
+    if (!chips.length) {
+      host.innerHTML = '<span style="font-size:11px;color:var(--muted)">暂无已开启吉方图层</span>';
+      return;
+    }
+    host.innerHTML = chips.slice(0, 12).map(c =>
+      `<button class="jump-chip" data-deg="${c.deg}"><span style="background:${c.color};width:6px;height:6px;border-radius:50%;display:inline-block"></span>${c.text}</button>`
+    ).join('');
+    host.querySelectorAll('.jump-chip').forEach(btn => {
+      btn.onclick = () => SensorEngine.takeOverSim(parseFloat(btn.dataset.deg));
+    });
+  },
+
+  updateSteering(deg, curState){
+    const leftBtn = document.getElementById('steerLeft');
+    const rightBtn = document.getElementById('steerRight');
+    if (!AppState.arCalloutOn || curState === 'golden' || curState === 'good') {
+      leftBtn.classList.remove('show');
+      rightBtn.classList.remove('show');
+      this.steerTargetDeg = null;
+      return;
+    }
+
+    // Find nearest clean golden (preferred) or good slice
+    let best = null;
+    const candidates = AppState.synthesisSlices.filter(s => s.state === 'golden' || s.state === 'good');
+    if (!candidates.length) {
+      leftBtn.classList.remove('show');
+      rightBtn.classList.remove('show');
+      this.steerTargetDeg = null;
+      return;
+    }
+    candidates.forEach(c => {
+      const diff = angDiff(c.mid, deg);
+      const absD = Math.abs(diff);
+      // Slight preference bonus for golden
+      const score = absD - (c.state === 'golden' ? 12 : 0);
+      if (!best || score < best.score) best = { slice: c, diff, absD, score };
+    });
+
+    if (!best || best.absD < 5) {
+      leftBtn.classList.remove('show');
+      rightBtn.classList.remove('show');
+      this.steerTargetDeg = null;
+      return;
+    }
+
+    this.steerTargetDeg = best.slice.mid;
+    const mName = SpaceEngine.describeAngle(best.slice.mid).m24;
+    const prefix = best.slice.state === 'golden' ? '黄金' : '净吉';
+    if (best.diff < 0) {
+      leftBtn.textContent = `◀ ${prefix}·${mName}山 ${Math.round(best.absD)}°`;
+      leftBtn.classList.add('show');
+      rightBtn.classList.remove('show');
+    } else {
+      rightBtn.textContent = `${prefix}·${mName}山 ${Math.round(best.absD)}° ▶`;
+      rightBtn.classList.add('show');
+      leftBtn.classList.remove('show');
+    }
+  },
+
+  renderFrame(deg){
+    const info = SpaceEngine.describeAngle(deg);
+    const res = ConflictResolver.evaluate(deg, AppState.computedLayers, AppState.ringEnabled);
+
+    CompassRenderer.rotate(deg);
+    HorizonRenderer.update(deg);
+
+    document.getElementById('horizonDeg').textContent = fmtDeg(deg);
+    document.getElementById('simSlider').value = (Math.round(normDeg(deg) * 2) / 2) % 360;
+    document.getElementById('simDegVal').textContent = normDeg(deg).toFixed(1) + '°';
+
+    // AR Reticle & 4-Diagonal Warning
+    document.getElementById('arReticle').className = 'ar-reticle st-' + res.state;
+    const diagLine = document.getElementById('diagWarningLine');
+    const diagPill = document.getElementById('diagWarningPill');
+    if (info.diagHit) {
+      diagLine.classList.add('show');
+      diagPill.textContent = `⚠ 四维空亡中线（${info.diagHit.name} ${info.diagHit.deg}°）· 忌立向`;
+      diagPill.classList.add('show');
+    } else {
+      diagLine.classList.remove('show');
+      diagPill.classList.remove('show');
+    }
+
+    // Camera AR Real-Time Callout
+    const callout = document.getElementById('arCallout');
+    callout.className = 'ar-callout st-' + res.state + (AppState.arCalloutOn ? '' : ' hidden');
+    document.getElementById('arcLoc').textContent = `${info.m24}山 · ${info.b12}宫 · ${info.gua8}卦`;
+    const arcTag = document.getElementById('arcTag');
+    arcTag.className = 'arc-tag v-' + (info.diagHit ? 'bad' : res.state);
+    arcTag.textContent = info.diagHit ? '⚠ 四维中线' : res.badge;
+    document.getElementById('arcMsg').textContent = info.diagHit
+      ? `压${info.diagHit.name}空亡线，立向忌用 ｜ ${res.shortMsg}`
+      : res.shortMsg;
+
+    // Left / Right Steering
+    this.updateSteering(deg, info.diagHit ? 'bad' : res.state);
+
+    // Floating Status Capsule
+    const cap = document.getElementById('statusCapsule');
+    cap.classList.remove('st-golden','st-good','st-weakened','st-conflict','st-bad','st-neutral');
+    cap.classList.add('st-' + res.state);
+    document.getElementById('capShan').textContent = `${info.m24}山 · ${info.gua8}卦`;
+    document.getElementById('capMeta').textContent = `${info.b12}宫 ${normDeg(deg).toFixed(1)}°`;
+    const vEl = document.getElementById('capVerdict');
+    vEl.className = 'cap-verdict v-' + (info.diagHit ? 'bad' : res.state);
+    vEl.textContent = info.diagHit ? '⚠ 四维中线' : res.badge;
+
+    document.getElementById('zLblLeft').textContent = `左半山 ${info.leftM}`;
+    document.getElementById('zLblCore').textContent = `本山核心 ${info.coreM}`;
+    document.getElementById('zLblRight').textContent = `右半山 ${info.rightM}`;
+    document.getElementById('zLblLeft').classList.toggle('active-z', info.zone === 'left');
+    document.getElementById('zLblCore').classList.toggle('active-z', info.zone === 'core');
+    document.getElementById('zLblRight').classList.toggle('active-z', info.zone === 'right');
+    document.getElementById('zoneNeedle').style.left = info.pct.toFixed(1) + '%';
+
+    const diagNote = info.diagHit ? `【四维警示】正压${info.diagHit.name}（±2.5°空亡线），立向忌用。` : '';
+    document.getElementById('capAdvice').textContent = diagNote + res.advice;
+
+    const hitsEl = document.getElementById('capHits');
+    if (res.matched.length) {
+      hitsEl.innerHTML = res.matched.map(m =>
+        `<span class="hit-tag"><span class="ht-dot" style="background:${m.color}"></span>[R${m.ring}] ${m.label}</span>`
+      ).join('');
+    } else {
+      hitsEl.innerHTML = `<span class="hit-tag" style="color:var(--muted)">${info.zoneLabel}（无叠临星煞）</span>`;
+    }
+
+    this.updateDiagLive();
+  },
+
+  renderSetupModal(){
+    const np = AppState.natal.pillars;
+    const tp = AppState.transit.pillars;
+
+    document.getElementById('natalPillarsBox').innerHTML = [
+      ['年柱', np.yGZ], ['月柱', np.mGZ], ['日柱', np.dGZ], ['时柱', np.hGZ]
+    ].map(([l, v]) => `<div class="p-item"><div class="p-lbl">${l}</div><div class="p-val">${v}</div></div>`).join('');
+
+    document.getElementById('natalEngineMeta').textContent =
+      `历法引擎：${np.engine}` + (AppState.natal.quickStem ? ` ｜ 已启用隐私快选天干【${AppState.natal.quickStem}】` : '');
+
+    document.querySelectorAll('#quickStemGrid .stem-btn').forEach(b => b.classList.toggle('on', b.dataset.stem === AppState.natal.quickStem));
+    document.querySelectorAll('#stemSourceGroup .seg-btn').forEach(b => b.classList.toggle('on', b.dataset.val === AppState.natal.stemSource));
+    document.querySelectorAll('#guirenMethodGroup .seg-btn').forEach(b => b.classList.toggle('on', b.dataset.val === AppState.natal.guirenMethod));
+    document.querySelectorAll('#spanModeGroup .seg-btn').forEach(b => b.classList.toggle('on', b.dataset.val === AppState.branchSpanMode));
+    document.querySelectorAll('#astroTimeModeGroup .seg-btn').forEach(b => b.classList.toggle('on', b.dataset.val === AppState.transit.astroTimeMode));
+
+    // Transit Tab
+    document.getElementById('transitPillarsBox').innerHTML = [
+      ['年柱', tp.yGZ], ['月柱', tp.mGZ], ['日柱', tp.dGZ], ['时柱', tp.hGZ]
+    ].map(([l, v]) => `<div class="p-item"><div class="p-lbl">${l}</div><div class="p-val">${v}</div></div>`).join('');
+
+    document.getElementById('transitMetaBox').textContent =
+      `${AppState.transit.date} ${AppState.transit.isLive ? '(实时)' : '(手动择日)'} ｜ ${tp.xunHead}旬空：${tp.voids.join('、')} ｜ 建除：${tp.jianchu}日`;
+    document.getElementById('transitDateInput').value = AppState.transit.date;
+
+    // Natal × Transit Xiangzhu Box
+    const xz = AppState.transit.xiangzhu;
+    const cb = document.getElementById('natalTransitClashBox');
+    cb.className = 'clash-box' + (xz.clashes.length ? ' has-bad' : '');
+    const clashHtml = xz.clashes.length
+      ? xz.clashes.map(s => `<div class="cb-bad">⚠ ${s}</div>`).join('')
+      : `<div style="color:var(--jade)">✓ 当辰四柱未天克地冲本命生年/生日柱</div>`;
+    const bonusHtml = xz.bonuses.length
+      ? `<div class="cb-good" style="margin-top:4px;">✦ ${xz.bonuses.join('；')}</div>`
+      : '';
+    cb.innerHTML = clashHtml + bonusHtml;
+
+    // 12 Shichen Cards
+    const scGrid = document.getElementById('shichenGrid');
+    scGrid.innerHTML = ZHI.map((z, i) => {
+      const hgz = CalendarEngine.hourGZFor(tp.dGan, i);
+      return `<div class="sc-card${i === AppState.transit.shichenIdx ? ' on' : ''}" data-sc="${i}">
+        <div class="sc-z">${z}时</div>
+        <div class="sc-gz">${hgz}</div>
+        <div class="sc-t">${HOUR_RANGES[i].slice(0,5)}</div>
+      </div>`;
+    }).join('');
+    scGrid.querySelectorAll('.sc-card').forEach(c => {
+      c.onclick = () => {
+        AppState.transit.isLive = false;
+        AppState.transit.shichenIdx = parseInt(c.dataset.sc, 10);
+        recomputeContextsAndLayers();
+        this.renderSetupModal();
+      };
+    });
+
+    // Seven Governors 24M Table
+    const astro = AppState.transit.astro;
+    document.getElementById('astroStatusLbl').textContent =
+      (astro.engineReady ? 'astronomy-engine 精确' : '离线兜底(仅太阳)') + ' · ' + astro.timeLabel;
+    const astroRows = AstroEngine.BODIES.map(b => {
+      const meta = AstroEngine.META[b];
+      const pos = astro.bodies[b];
+      const lid = 'astro_' + b.toLowerCase();
+      const on = AppState.ringEnabled[4] && AppState.enabledLayers[lid];
+      if (!pos) {
+        return `<tr><td style="color:${meta.color}">${meta.cn}</td><td>离线待加载</td><td>—</td><td>${on ? '开' : '关'}</td></tr>`;
+      }
+      const dir = (b === 'Sun' || b === 'Moon') ? '顺' : (pos.isRetrograde ? '↺ 逆行' : '→ 顺行');
+      return `<tr><td style="color:${meta.color};font-weight:700">${meta.cn}</td><td><b>${pos.m24}山</b></td><td style="font-family:var(--mono)">${pos.lon.toFixed(1)}° ${dir}</td><td>${on ? '已显' : '未开'}</td></tr>`;
+    }).join('');
+    document.getElementById('astroTable').innerHTML = `<tr><th>星曜</th><th>临24山</th><th>视黄经/动向</th><th>第4环</th></tr>` + astroRows;
+
+    // Transit Shensha Quick Table
+    const rows = AppState.computedLayers
+      .filter(e => e.plugin.ring === 1 || e.plugin.ring === 3)
+      .map(e => {
+        const locs = e.sectors.map(s => s.token).join('');
+        const polCls = e.plugin.polarity === 'good' ? 'pol-good' : (e.plugin.polarity === 'bad' ? 'pol-bad' : 'pol-neutral');
+        const st = (AppState.ringEnabled[e.plugin.ring] && e.enabled) ? '已显' : '未开';
+        return `<tr><td class="${polCls}">${e.plugin.name}</td><td>${locs || '—'}</td><td>第${e.plugin.ring}环·${st}</td></tr>`;
+      }).join('');
+    document.getElementById('transitShaTable').innerHTML =
+      `<tr><th>神煞</th><th>落位</th><th>状态</th></tr>` +
+      `<tr><td class="pol-neutral">建除(日)</td><td>${tp.jianchu}</td><td>历法项</td></tr>` +
+      rows;
+  },
+
+  renderLayersModal(){
+    const body = document.getElementById('layersBody');
+
+    const headerHtml = `
+      <div class="sec-label" style="margin-top:0;"><span>快速场景预设</span></div>
+      <div class="seg-group" style="margin-bottom:12px;">
+        <button class="seg-btn${AppState.activeScene === 'daily' ? ' on' : ''}" id="presetDailyBtn">✦ 日常纳气（净选办公/谈判）</button>
+        <button class="seg-btn${AppState.activeScene === 'build' ? ' on' : ''}" id="presetBuildBtn">⚒ 动土修造（全量拦截重煞）</button>
+      </div>
+    `;
+
+    const ringsHtml = RING_DEFS.map(r => {
+      const rOn = !!AppState.ringEnabled[r.id];
+      const items = AppState.computedLayers.filter(e => e.plugin.ring === r.id);
+      const allItemsOn = items.length > 0 && items.every(i => i.enabled);
+
+      // Ring 4 extra quick toggle for Astro time mode
+      const astroSub = r.id === 4 ? `
+        <div class="seg-group" style="margin:6px 0 4px;">
+          <button class="seg-btn${AppState.transit.astroTimeMode === 'day00' ? ' on' : ''}" data-atmode="day00">当日 00:00 (通书)</button>
+          <button class="seg-btn${AppState.transit.astroTimeMode === 'exact' ? ' on' : ''}" data-atmode="exact">实时 / 所选时辰</button>
+        </div>` : '';
+
+      const rowsHtml = items.map(e => {
+        const hitStr = e.sectors.map(s => s.short).join('、') || (e.plugin.scope === 'astro' ? '等待天星库' : '—');
+        return `<div class="layer-row">
+          <div class="lr-info">
+            <div class="lr-name">
+              <span class="lr-swatch" style="background:${e.plugin.color}"></span>
+              <span>${e.plugin.name}</span>
+              <span class="lr-unit">${e.plugin.unit}</span>
+            </div>
+            <div class="lr-hits">落位：${hitStr} · ${e.plugin.desc}</div>
+          </div>
+          <button class="toggle-sw${e.enabled ? ' on' : ''}" data-lid="${e.plugin.id}" aria-label="开关${e.plugin.name}"></button>
+        </div>`;
+      }).join('');
+
+      return `<div class="ring-master-card${rOn ? '' : ' ring-off'}">
+        <div class="rm-head">
+          <div class="rm-title-wrap">
+            <div class="rm-title">${r.name} <span class="rm-badge">${r.unitLbl}</span></div>
+            <div class="rm-desc">${r.desc}</div>
+          </div>
+          <div class="rm-actions">
+            ${items.length ? `<button class="lg-batch" data-ring-batch="${r.id}">${allItemsOn ? '全关子项' : '全开子项'}</button>` : ''}
+            <button class="toggle-sw${rOn ? ' on' : ''}" data-ring-master="${r.id}" title="总开关第${r.id}环"></button>
+          </div>
+        </div>
+        ${astroSub}
+        ${rowsHtml}
+      </div>`;
+    }).join('');
+
+    body.innerHTML = headerHtml + ringsHtml;
+
+    document.getElementById('presetDailyBtn').onclick = () => { applyScenePreset('daily'); recomputeContextsAndLayers(); this.renderLayersModal(); };
+    document.getElementById('presetBuildBtn').onclick = () => { applyScenePreset('build'); recomputeContextsAndLayers(); this.renderLayersModal(); };
+
+    body.querySelectorAll('[data-atmode]').forEach(btn => {
+      btn.onclick = () => {
+        AppState.transit.astroTimeMode = btn.dataset.atmode;
+        SafeStore.set('xs_astro_tmode', AppState.transit.astroTimeMode);
+        recomputeContextsAndLayers();
+        this.renderLayersModal();
+      };
+    });
+
+    body.querySelectorAll('[data-ring-master]').forEach(sw => {
+      sw.onclick = () => {
+        const rid = parseInt(sw.dataset.ringMaster, 10);
+        AppState.ringEnabled[rid] = !AppState.ringEnabled[rid];
+        AppState.activeScene = 'custom';
+        SafeStore.set('xs_rings_v2', AppState.ringEnabled);
+        SafeStore.set('xs_scene_v2', 'custom');
+        recomputeContextsAndLayers();
+        this.renderLayersModal();
+      };
+    });
+
+    body.querySelectorAll('[data-ring-batch]').forEach(btn => {
+      btn.onclick = () => {
+        const rid = parseInt(btn.dataset.ringBatch, 10);
+        const targets = LAYER_REGISTRY.filter(p => p.ring === rid);
+        const allOn = targets.every(p => AppState.enabledLayers[p.id]);
+        targets.forEach(p => { AppState.enabledLayers[p.id] = !allOn; });
+        AppState.activeScene = 'custom';
+        SafeStore.set('xs_layers_v2', AppState.enabledLayers);
+        SafeStore.set('xs_scene_v2', 'custom');
+        recomputeContextsAndLayers();
+        this.renderLayersModal();
+      };
+    });
+
+    body.querySelectorAll('.toggle-sw[data-lid]').forEach(sw => {
+      sw.onclick = () => {
+        const id = sw.dataset.lid;
+        AppState.enabledLayers[id] = !AppState.enabledLayers[id];
+        AppState.activeScene = 'custom';
+        SafeStore.set('xs_layers_v2', AppState.enabledLayers);
+        SafeStore.set('xs_scene_v2', 'custom');
+        recomputeContextsAndLayers();
+        this.renderLayersModal();
+      };
+    });
+  },
+
+  renderDiagModal(){
+    this.updateDiagLive();
+    document.querySelectorAll('#channelBtns .ch-btn').forEach(btn => {
+      btn.classList.toggle('on', btn.dataset.ch === SensorEngine.activeSource);
+    });
+    const plat = SensorEngine.isRealIOS() ? 'iOS 设备（webkitCompassHeading 优先）' : 'Android / 桌面设备（AbsoluteOrientationSensor 瀑布流）';
+    document.getElementById('diagPlatformNote').textContent =
+      `识别平台：${plat} ｜ 安全上下文：${window.isSecureContext ? 'HTTPS 安全' : '非 HTTPS'} ｜ 倾角补偿：3D ENU 矩阵按 R22 在 +Y 与 -Z 间线性混合。`;
+  },
+
+  updateDiagLive(){
+    const modal = document.getElementById('diagModal');
+    if (!modal || !modal.classList.contains('show')) return;
+    document.getElementById('dSource').textContent = SensorEngine.activeSource;
+    document.getElementById('dHz').textContent = SensorEngine.hz.toFixed(1) + ' Hz';
+    document.getElementById('dR22').textContent = SensorEngine.r22.toFixed(3);
+    document.getElementById('dAngles').textContent = `${SensorEngine.rawDeg.toFixed(1)}° / ${SensorEngine.heading.toFixed(1)}°`;
+    document.querySelectorAll('#channelBtns .ch-btn').forEach(btn => {
+      btn.classList.toggle('on', btn.dataset.ch === SensorEngine.activeSource);
+    });
+  }
+};
+
+/* ============================================================================
+ * MODULE 8: ASYNC LIBRARY HOOKS & BOOTSTRAP
+ * ========================================================================== */
+window.__onLunarLoaded = function(){
+  CalendarEngine.lunarReady = true;
+  recomputeContextsAndLayers();
+  if (document.getElementById('setupModal').classList.contains('show')) UIController.renderSetupModal();
+};
+window.__onLunarError = function(){ CalendarEngine.lunarReady = false; };
+
+window.__onAstroLoaded = function(){
+  AstroEngine.ready = true;
+  recomputeContextsAndLayers();
+  if (document.getElementById('setupModal').classList.contains('show')) UIController.renderSetupModal();
+  if (document.getElementById('layersModal').classList.contains('show')) UIController.renderLayersModal();
+};
+window.__onAstroError = function(){ AstroEngine.ready = false; };
+
+window.XuanShu = {
+  SpaceEngine,
+  CalendarEngine,
+  AstroEngine,
+  LAYER_REGISTRY,
+  registerLayer,
+  recomputeContextsAndLayers,
+  SensorEngine,
+  AppState
+};
+
+UIController.init();
+recomputeContextsAndLayers();
+SensorEngine.startAutoWaterfall();
+})();
+</script>
+</body>
+</html>
