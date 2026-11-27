@@ -9,11 +9,10 @@
 <style>
   :root {
     --bg: #070b14;
-    --panel: rgba(11, 17, 30, 0.82);
+    --panel: rgba(11, 17, 30, 0.84);
     --panel-solid: #0c1322;
-    --border: rgba(212, 175, 55, 0.32);
+    --border: rgba(212, 175, 55, 0.34);
     --gold: #e2be67;
-    --gold-dim: rgba(226, 190, 103, 0.55);
     --text: #f3f4f6;
     --muted: #9ca3af;
     --l4: #10b981;
@@ -59,11 +58,17 @@
   .hud-header {
     display: flex; align-items: center; justify-content: space-between; gap: 6px;
   }
+  .hud-left-group { display: flex; align-items: center; gap: 6px; }
   .brand-pill {
-    display: flex; align-items: center; gap: 6px;
+    display: flex; align-items: center; gap: 4px;
     background: var(--panel); border: 1px solid var(--border);
-    padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--gold);
+    padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--gold);
     backdrop-filter: blur(8px);
+  }
+  .diag-trigger {
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--gold); border-radius: 999px; padding: 4px 8px;
+    font-size: 11px; font-weight: 700; cursor: pointer; backdrop-filter: blur(8px);
   }
   .method-seg {
     display: flex; background: var(--panel); border: 1px solid var(--border);
@@ -108,6 +113,12 @@
     text-align: center; display: none;
   }
   .crack-warn.show { display: block; }
+  .https-banner {
+    display: none; margin-top: 4px; font-size: 11px; color: #fca5a5;
+    background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.5);
+    border-radius: 6px; padding: 3px 8px; text-align: center;
+  }
+  .https-banner.show { display: block; }
 
   /* 罗盘舞台 */
   .compass-stage {
@@ -153,6 +164,7 @@
     width: 100%; height: 100%; overflow: visible;
     filter: drop-shadow(0 8px 26px rgba(0,0,0,0.65));
   }
+  /* 锁死 SVG 原点为 0 0，彻底消除与 rotate(deg 500 500) 叠加导致的左右漂移 */
   #wheel-group {
     transform-origin: 0 0;
   }
@@ -188,9 +200,15 @@
   .sim-bar.show { display: flex; }
   .sim-bar input[type=range] { flex: 1; accent-color: var(--gold); }
 
-  .action-row {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+  .time-row { display: flex; gap: 5px; margin-bottom: 6px; }
+  .time-row button {
+    flex: 1; background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
+    color: var(--text); border-radius: 8px; padding: 5px 4px; font-size: 11px;
+    cursor: pointer; font-weight: 600;
   }
+  .time-row button.now-btn { color: var(--gold); border-color: var(--border); }
+
+  .action-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .dock-btn {
     background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
     color: var(--text); border-radius: 10px; padding: 7px 4px;
@@ -205,17 +223,7 @@
   .dock-btn.active { border-color: var(--l4); color: var(--l4); }
   .dock-btn span.ico { font-size: 14px; line-height: 1; }
 
-  .time-row {
-    display: flex; gap: 5px; margin-bottom: 6px;
-  }
-  .time-row button {
-    flex: 1; background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
-    color: var(--text); border-radius: 8px; padding: 5px 4px; font-size: 11px;
-    cursor: pointer; font-weight: 600;
-  }
-  .time-row button.now-btn { color: var(--gold); border-color: var(--border); }
-
-  /* 抽屉弹窗 */
+  /* 通用抽屉弹窗 */
   .modal-backdrop {
     position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.62);
     display: none; align-items: flex-end; justify-content: center;
@@ -241,9 +249,7 @@
   .sheet-body {
     padding: 12px 16px 24px; overflow-y: auto; font-size: 13px; line-height: 1.6;
   }
-  .tab-bar {
-    display: flex; gap: 6px; margin-bottom: 12px;
-  }
+  .tab-bar { display: flex; gap: 6px; margin-bottom: 12px; }
   .tab-btn {
     flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.14);
     background: rgba(255,255,255,0.04); color: var(--muted); font-weight: 700; font-size: 12px; cursor: pointer;
@@ -278,19 +284,8 @@
     background: linear-gradient(135deg, #c4a352, #e2be67); color: #0b111e;
     font-weight: 800; font-size: 13px; cursor: pointer;
   }
-  .https-banner {
-    display: none; margin-top: 4px; font-size: 11px; color: #fca5a5;
-    background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.5);
-    border-radius: 6px; padding: 3px 8px; text-align: center;
-  }
-  .https-banner.show { display: block; }
 
-  /* 传感器诊断与磁偏校准弹窗 */
-  .diag-trigger {
-    background: var(--panel); border: 1px solid var(--border);
-    color: var(--gold); border-radius: 999px; padding: 4px 8px;
-    font-size: 11px; font-weight: 700; cursor: pointer; backdrop-filter: blur(8px);
-  }
+  /* 传感器诊断与磁偏校准抽屉 */
   .diag-backdrop {
     position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.68);
     display: none; align-items: flex-end; justify-content: center;
@@ -300,7 +295,7 @@
   .diag-sheet {
     width: 100%; max-width: 520px; max-height: 86vh; overflow-y: auto;
     background: #0d131f; border: 1px solid var(--border); border-bottom: none;
-    border-radius: 18px 18px 0 0; padding: 16px 16px 22px;
+    border-radius: 18px 18px 0 0; padding: 16px 16px 24px;
     box-shadow: 0 -10px 35px rgba(0,0,0,0.7);
   }
   .diag-head {
@@ -308,9 +303,7 @@
     padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);
   }
   .diag-head h3 { margin: 0; font-size: 16px; color: var(--gold); font-weight: 700; }
-  .diag-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;
-  }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
   .diag-box {
     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
     border-radius: 10px; padding: 10px 12px;
@@ -324,9 +317,7 @@
   .diag-slider-row .val { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
   #diag-dec-slider { width: 100%; accent-color: var(--gold); margin-bottom: 14px; }
   .diag-sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-  .diag-ch-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;
-  }
+  .diag-ch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
   .diag-ch-btn {
     background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.14);
     color: #e5e7eb; border-radius: 9px; padding: 10px 8px;
@@ -341,9 +332,7 @@
     background: rgba(226, 190, 103, 0.14); border: 1px solid var(--gold);
     color: var(--gold); font-size: 13px; font-weight: 700; margin-bottom: 12px;
   }
-  .diag-foot {
-    font-size: 11px; color: var(--muted); line-height: 1.55;
-  }
+  .diag-foot { font-size: 11px; color: var(--muted); line-height: 1.55; }
 </style>
 </head>
 <body>
@@ -354,12 +343,14 @@
 <!-- 顶部 HUD -->
 <div class="top-hud">
   <div class="hud-header">
-    <div class="brand-pill">🧭 奇门出行诀 AR</div>
+    <div class="hud-left-group">
+      <div class="brand-pill">🧭 奇门出行诀</div>
+      <button class="diag-trigger" type="button" onclick="openDiagModal()">⚙️ 诊断校准</button>
+    </div>
     <div class="method-seg" id="method-seg">
-      <button data-m="ChaiBu" class="active">拆补</button>
-      <button data-m="ZhiRun">置闰</button>
-      <button data-m="YinPan">阴盘</button>
-      <button class="diag-trigger" onclick="openDiagModal()">⚙️ 诊断校准</button>
+      <button type="button" data-m="ChaiBu" class="active">拆补</button>
+      <button type="button" data-m="ZhiRun">置闰</button>
+      <button type="button" data-m="YinPan">阴盘</button>
     </div>
   </div>
 
@@ -404,6 +395,7 @@
         <g id="ring2-chuxing"></g>
         <g id="ring1-qimen"></g>
       </g>
+      <!-- 中宫独立于旋转组之外，保持局数正立清晰 -->
       <g id="center-hub"></g>
     </svg>
   </div>
@@ -418,36 +410,36 @@
   </div>
 
   <div class="ring-toggles" id="ring-toggles">
-    <button class="chip on" data-ring="ring1">R1 奇门盘</button>
-    <button class="chip on" data-ring="ring2">R2 出行评级</button>
-    <button class="chip on" data-ring="ring3">R3 格局/行动</button>
-    <button class="chip on" data-ring="ring4">R4 12地支</button>
-    <button class="chip on" data-ring="ring5">R5 24山</button>
-    <button class="chip" id="btn-label-mode" onclick="toggleLabelMode()">模式: 传统格局</button>
-    <button class="chip" id="btn-tilt" onclick="toggleTilt3D()">3D 倾角</button>
+    <button type="button" class="chip on" data-ring="ring1">R1 奇门盘</button>
+    <button type="button" class="chip on" data-ring="ring2">R2 出行评级</button>
+    <button type="button" class="chip on" data-ring="ring3">R3 格局/行动</button>
+    <button type="button" class="chip on" data-ring="ring4">R4 12地支</button>
+    <button type="button" class="chip on" data-ring="ring5">R5 24山</button>
+    <button type="button" class="chip" id="btn-label-mode" onclick="toggleLabelMode()">模式: 传统格局</button>
+    <button type="button" class="chip" id="btn-tilt" onclick="toggleTilt3D()">3D 倾角</button>
   </div>
 
   <div class="time-row">
-    <button onclick="stepHour(-2)">◀ 上时辰</button>
-    <button class="now-btn" onclick="resetToNow()">⚡ 当下</button>
-    <button onclick="stepHour(2)">下时辰 ▶</button>
-    <button onclick="openTimeModal()">📅 自选时间</button>
+    <button type="button" onclick="stepHour(-2)">◀ 上时辰</button>
+    <button type="button" class="now-btn" onclick="resetToNow()">⚡ 当下</button>
+    <button type="button" onclick="stepHour(2)">下时辰 ▶</button>
+    <button type="button" onclick="openTimeModal()">📅 自选时间</button>
   </div>
 
   <div class="action-row">
-    <button class="dock-btn" id="btn-camera" onclick="toggleCamera()">
+    <button type="button" class="dock-btn" id="btn-camera" onclick="toggleCamera()">
       <span class="ico">📷</span><span>AR相机</span>
     </button>
-    <button class="dock-btn" id="btn-sensor" onclick="toggleSensorMode()">
-      <span class="ico">🧲</span><span id="sensor-lbl">启磁感</span>
+    <button type="button" class="dock-btn" id="btn-sensor" onclick="toggleSensorMode()">
+      <span class="ico">🧲</span><span id="sensor-lbl">手动中</span>
     </button>
-    <button class="dock-btn primary" onclick="openChuXingModal()">
+    <button type="button" class="dock-btn primary" onclick="openChuXingModal()">
       <span class="ico">🧭</span><span>出行诀</span>
     </button>
-    <button class="dock-btn" onclick="openSummaryModal()">
+    <button type="button" class="dock-btn" onclick="openSummaryModal()">
       <span class="ico">🌟</span><span>吉格/三胜</span>
     </button>
-    <button class="dock-btn" onclick="openCurrentPalaceDetail()">
+    <button type="button" class="dock-btn" onclick="openCurrentPalaceDetail()">
       <span class="ico">📖</span><span>本宫详批</span>
     </button>
   </div>
@@ -458,7 +450,7 @@
   <div class="sheet">
     <div class="sheet-head">
       <h3 id="modal-title">详情</h3>
-      <button class="sheet-close" onclick="closeModal()">✕</button>
+      <button type="button" class="sheet-close" onclick="closeModal()">✕</button>
     </div>
     <div class="sheet-body" id="modal-body"></div>
   </div>
@@ -469,7 +461,7 @@
   <div class="diag-sheet">
     <div class="diag-head">
       <h3>传感器诊断与磁偏校准</h3>
-      <button class="sheet-close" onclick="closeDiagModal()">✕</button>
+      <button type="button" class="sheet-close" onclick="closeDiagModal()">✕</button>
     </div>
 
     <div class="diag-grid">
@@ -499,14 +491,14 @@
 
     <div class="diag-sub">强制测试通道（严格单源互斥切换）</div>
     <div class="diag-ch-grid" id="diag-ch-grid">
-      <button class="diag-ch-btn" data-ch="absSensor" onclick="forceSensorChannel('absSensor')">1. AbsoluteOrientation</button>
-      <button class="diag-ch-btn" data-ch="orientationabsolute" onclick="forceSensorChannel('orientationabsolute')">2. orientationabsolute</button>
-      <button class="diag-ch-btn" data-ch="deviceorientation" onclick="forceSensorChannel('deviceorientation')">3. deviceorientation</button>
-      <button class="diag-ch-btn" data-ch="webkitCompass" onclick="forceSensorChannel('webkitCompass')">4. webkitCompass</button>
-      <button class="diag-ch-btn full" data-ch="simulation" onclick="forceSensorChannel('simulation')">5. 手动模拟模式 (Simulation)</button>
+      <button type="button" class="diag-ch-btn" data-ch="absSensor" onclick="forceSensorChannel('absSensor')">1. AbsoluteOrientation</button>
+      <button type="button" class="diag-ch-btn" data-ch="orientationabsolute" onclick="forceSensorChannel('orientationabsolute')">2. orientationabsolute</button>
+      <button type="button" class="diag-ch-btn" data-ch="deviceorientation" onclick="forceSensorChannel('deviceorientation')">3. deviceorientation</button>
+      <button type="button" class="diag-ch-btn" data-ch="webkitCompass" onclick="forceSensorChannel('webkitCompass')">4. webkitCompass</button>
+      <button type="button" class="diag-ch-btn full active" data-ch="simulation" onclick="forceSensorChannel('simulation')">5. 手动模拟模式 (Simulation)</button>
     </div>
 
-    <button class="diag-waterfall-btn" onclick="runAutoWaterfall()">↺ 重新运行自动瀑布流检测</button>
+    <button type="button" class="diag-waterfall-btn" onclick="runAutoWaterfall()">↺ 重新运行自动瀑布流检测</button>
     <div class="diag-foot" id="diag-foot"></div>
   </div>
 </div>
@@ -526,9 +518,8 @@ const PALACE_META = {
   6: { num:6, gua:'乾', dir:'西北', center:315, elem:'金', zhi:['戌','亥'], shan:['戌','乾','亥'], star:'天心', door:'开门' },
   5: { num:5, gua:'中', dir:'中央', center:null,elem:'土', zhi:[],         shan:[],               star:'天禽', door:'死门' }
 };
-const RING_ORDER = [1, 8, 3, 4, 9, 2, 7, 6]; // 顺时针外八宫
+const RING_ORDER = [1, 8, 3, 4, 9, 2, 7, 6];
 
-// 12 地支：每支 30°，子中 0° (345°–15°)
 const ZHI_12 = [
   { name:'子', center:0,   dir:'正北',   palace:1 },
   { name:'丑', center:30,  dir:'北偏东', palace:8 },
@@ -544,7 +535,6 @@ const ZHI_12 = [
   { name:'亥', center:330, dir:'北偏西', palace:6 }
 ];
 
-// 24 山：每山 15°，子中 0° (352.5°–7.5°)
 const SHAN_24 = [
   { name:'子', center:0,   palace:1, type:'zhi' },
   { name:'癸', center:15,  palace:1, type:'gan' },
@@ -574,7 +564,7 @@ const SHAN_24 = [
 const GUA_BOUNDARIES = [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5];
 
 /* ============================================================================
- * 二、奇门核心辞典（整合传统象意 + daily_qimen 行动/风水字典）
+ * 二、奇门核心辞典
  * ============================================================================ */
 const JQ_ORDER = [
   '冬至','小寒','大寒','立春','雨水','惊蛰','春分','清明','谷雨','立夏','小满','芒种',
@@ -645,75 +635,55 @@ const GOD_DESC = {
  * 三、纯原生时家奇门排盘引擎（依赖 lunar.js）
  * ============================================================================ */
 const QimenEngine = {
-  // 置闰法：以两年前冬至的最近上元符头起算，精确推演超神/接气/闰芒种/闰大雪
   calcZhiRunJu(solar) {
-    // 23:00 换日柱，归入次日早子时
     let baseSolar = solar;
-    if (solar.getHour() >= 23) {
-      baseSolar = solar.next(1);
-    }
+    if (solar.getHour() >= 23) baseSolar = solar.next(1);
     const targetDay = Solar.fromYmd(baseSolar.getYear(), baseSolar.getMonth(), baseSolar.getDay());
     const startYear = targetDay.getYear() - 2;
 
-    // 预取连续4年的24节气表（按时间排序）
     const termList = [];
     for (let y = startYear; y <= targetDay.getYear() + 1; y++) {
       const ly = LunarYear.fromYear(y);
       const jds = ly.getJieQiJulianDays();
-      const keys = LunarUtil.JIE_QI_IN_USE;
-      for (let i = 1; i <= 24; i++) { // 1=冬至 .. 24=大雪
+      for (let i = 1; i <= 24; i++) {
         const s = Solar.fromJulianDay(jds[i]);
-        const name = JQ_ORDER[i - 1];
         termList.push({
-          name,
+          name: JQ_ORDER[i - 1],
           idx: i - 1,
           solar: Solar.fromYmd(s.getYear(), s.getMonth(), s.getDay())
         });
       }
     }
 
-    // 找到第一个冬至，并定位其对应的上元符头（在 [冬至-8天, 冬至+6天] 内的唯一 15日周期起点）
     const dz0 = termList[0].solar;
     let cycleStart = null;
     for (let d = -8; d <= 6; d++) {
       const cand = dz0.next(d);
       const gz = cand.getLunar().getDayInGanZhi();
-      if (LunarUtil.getJiaZiIndex(gz) % 15 === 0) {
-        cycleStart = cand;
-        break;
-      }
+      if (LunarUtil.getJiaZiIndex(gz) % 15 === 0) { cycleStart = cand; break; }
     }
     if (!cycleStart) cycleStart = dz0;
 
-    let tIdx = 0;
-    let isLeapCycle = false;
-    let safety = 0;
+    let tIdx = 0, isLeapCycle = false, safety = 0;
     while (safety++ < 150) {
       const nextCycleStart = cycleStart.next(15);
-      // targetDay 落在 [cycleStart, nextCycleStart) 内
       if (targetDay.subtract(cycleStart) >= 0 && targetDay.subtract(nextCycleStart) < 0) {
         const daysIn = targetDay.subtract(cycleStart);
         const yuanIdx = Math.min(2, Math.floor(daysIn / 5));
         const term = termList[tIdx];
         const info = JQ_TABLE[term.name];
         return {
-          jqName: term.name,
-          isLeapTerm: isLeapCycle,
-          yuanIdx,
+          jqName: term.name, isLeapTerm: isLeapCycle, yuanIdx,
           yuanName: ['上元','中元','下元'][yuanIdx],
-          isYang: info.yang,
-          juNumber: info.ju[yuanIdx],
+          isYang: info.yang, juNumber: info.ju[yuanIdx],
           note: isLeapCycle ? `置闰(${term.name}闰)` : '置闰法'
         };
       }
-      // 推演下一个15日周期是否置闰
-      const curTerm = termList[tIdx];
-      const nextTerm = termList[tIdx + 1];
+      const curTerm = termList[tIdx], nextTerm = termList[tIdx + 1];
       if (!nextTerm) break;
       if (!isLeapCycle && (curTerm.name === '芒种' || curTerm.name === '大雪')) {
         const chaoShenDays = nextTerm.solar.subtract(nextCycleStart);
         if (chaoShenDays >= 9) {
-          // 芒种或大雪超神达9天以上，重复本节气（置闰）
           isLeapCycle = true;
           cycleStart = nextCycleStart;
           continue;
@@ -726,46 +696,35 @@ const QimenEngine = {
     return this.calcChaiBuJu(solar);
   },
 
-  // 拆补法：精确节气 + 日干支符头定三元
   calcChaiBuJu(solar) {
     const lunar = solar.getLunar();
     const prevJQ = lunar.getPrevJieQi(false);
     const jqName = prevJQ.getName();
-    const dayGZ = lunar.getDayInGanZhiExact(); // 23:00 已自动换日
+    const dayGZ = lunar.getDayInGanZhiExact();
     const dayIdx = LunarUtil.getJiaZiIndex(dayGZ);
     const yuanIdx = Math.floor(dayIdx / 5) % 3;
     const info = JQ_TABLE[jqName] || { yang: true, ju: [1,7,4] };
     return {
-      jqName,
-      isLeapTerm: false,
-      yuanIdx,
+      jqName, isLeapTerm: false, yuanIdx,
       yuanName: ['上元','中元','下元'][yuanIdx],
-      isYang: info.yang,
-      juNumber: info.ju[yuanIdx],
-      note: '拆补法'
+      isYang: info.yang, juNumber: info.ju[yuanIdx], note: '拆补法'
     };
   },
 
-  // 阴盘奇门：(年支数 + 农历月 + 农历日 + 时支数) % 9，冬至后阳遁、夏至后阴遁
   calcYinPanJu(solar) {
     const lunar = solar.getLunar();
     const prevJQ = lunar.getPrevJieQi(false);
     const jqName = prevJQ.getName();
     const info = JQ_TABLE[jqName] || { yang: true };
-    const yZhiIdx = lunar.getYearZhiIndexExact() + 1; // 子=1..亥=12
+    const yZhiIdx = lunar.getYearZhiIndexExact() + 1;
     const lMonth = Math.abs(lunar.getMonth());
     const lDay = lunar.getDay();
     const hZhiIdx = lunar.getTimeZhiIndex() + 1;
     let ju = (yZhiIdx + lMonth + lDay + hZhiIdx) % 9;
     if (ju === 0) ju = 9;
     return {
-      jqName,
-      isLeapTerm: false,
-      yuanIdx: -1,
-      yuanName: '阴盘数',
-      isYang: info.yang,
-      juNumber: ju,
-      note: '阴盘奇门'
+      jqName, isLeapTerm: false, yuanIdx: -1,
+      yuanName: '阴盘数', isYang: info.yang, juNumber: ju, note: '阴盘奇门'
     };
   },
 
@@ -786,7 +745,6 @@ const QimenEngine = {
 
     const { isYang, juNumber } = juInfo;
 
-    // 1. 地盘布三奇六仪
     const earthStem = {};
     for (let i = 0; i < 9; i++) {
       const p = isYang
@@ -795,10 +753,9 @@ const QimenEngine = {
       earthStem[p] = STEM_SEQ[i];
     }
 
-    // 2. 找时柱旬首、值符、值使
     const xunHeadGZ = LunarUtil.getXun(timeGZ);
     const xunShouStem = XUN_HEAD_STEM[xunHeadGZ];
-    const xunKongStr = LunarUtil.getXunKong(timeGZ); // 例如 "戌亥"
+    const xunKongStr = LunarUtil.getXunKong(timeGZ);
     const xunKongZhis = [xunKongStr[0], xunKongStr[1]];
     const xunKongPalaces = [...new Set(xunKongZhis.map(z => ZHI_TO_PALACE[z]))];
 
@@ -813,13 +770,12 @@ const QimenEngine = {
     const zhiFuStar = PALACE_META[xunPalace].star;
     const zhiShiDoor = PALACE_META[xunPalace].door;
 
-    // 3. 天盘旋转（值符随时干）
     const targetTimeStem = (hGan === '甲') ? xunShouStem : hGan;
     let zfTargetPalace = 1;
     for (let p = 1; p <= 9; p++) {
       if (earthStem[p] === targetTimeStem) { zfTargetPalace = p; break; }
     }
-    if (zfTargetPalace === 5) zfTargetPalace = 2; // 寄坤二宫
+    if (zfTargetPalace === 5) zfTargetPalace = 2;
 
     const zfOrigRingPalace = (xunPalace === 5) ? 2 : xunPalace;
     const zfOrigIdx = RING_ORDER.indexOf(zfOrigRingPalace);
@@ -831,21 +787,11 @@ const QimenEngine = {
         ...PALACE_META[p],
         earthStem: earthStem[p],
         earthJiStem: p === 2 ? earthStem[5] : '',
-        heavenStem: '',
-        heavenJiStem: '',
-        star: '',
-        hasQin: false,
-        door: '',
-        god: '',
-        godShort: '',
-        marks: [],
-        goodForms: [],
-        badForms: [],
-        isKong: xunKongPalaces.includes(p),
-        isMa: maPalace === p,
-        isSanSheng: false,
-        isWuBuJi: false,
-        eval: null
+        heavenStem: '', heavenJiStem: '', star: '', hasQin: false,
+        door: '', god: '', godShort: '',
+        marks: [], goodForms: [], badForms: [],
+        isKong: xunKongPalaces.includes(p), isMa: maPalace === p,
+        isSanSheng: false, isWuBuJi: false, eval: null
       };
     });
 
@@ -860,7 +806,6 @@ const QimenEngine = {
       }
     }
 
-    // 4. 八门旋转（值使随时宫）
     const steps = (LunarUtil.getJiaZiIndex(timeGZ) - LunarUtil.getJiaZiIndex(xunHeadGZ) + 60) % 60;
     let zsTargetPalace = isYang
       ? ((xunPalace - 1 + steps) % 9) + 1
@@ -875,7 +820,6 @@ const QimenEngine = {
       palaces[dstP].door = PALACE_META[srcP].door;
     }
 
-    // 5. 八神旋转（阳顺阴逆）
     for (let i = 0; i < 8; i++) {
       const dstP = isYang
         ? RING_ORDER[(zfDstIdx + i) % 8]
@@ -884,7 +828,6 @@ const QimenEngine = {
       palaces[dstP].godShort = GODS_SHORT[i];
     }
 
-    // 6. 定位日干宫、时干宫、三胜宫、五不击
     let dayPalace = 2, hourPalace = zfTargetPalace, jiuTianPalace = 2, jiuDiPalace = 2, shengPalace = 2, dingPalace = 2;
     const dayTargetStem = (dGan === '甲') ? XUN_HEAD_STEM[LunarUtil.getXun(dGan + dZhi)] : dGan;
     RING_ORDER.forEach(p => {
@@ -903,25 +846,19 @@ const QimenEngine = {
     const wuBuYuShi = (OVERCOMES[hGan] === dGan);
     const globalAuspicious = [];
 
-    // 7. 逐宫扫描迫/刑/墓/空、吉凶格、Level 1-4 出行评级
     RING_ORDER.forEach(p => {
       const pd = palaces[p];
       pd.isSanSheng = sanShengSet.has(p);
       pd.isWuBuJi = wuBuJiSet.has(p);
 
-      // 门迫
       if (ELEM_KE[DOOR_ELEM[pd.door]] === pd.elem) pd.marks.push('迫');
-      // 击刑
       if (JIXING_MAP[pd.heavenStem] === p || (pd.heavenJiStem && JIXING_MAP[pd.heavenJiStem] === p)) pd.marks.push('刑');
-      // 入墓
       if ((RUME_MAP[pd.heavenStem] && RUME_MAP[pd.heavenStem].includes(p)) ||
           (pd.heavenJiStem && RUME_MAP[pd.heavenJiStem] && RUME_MAP[pd.heavenJiStem].includes(p))) pd.marks.push('墓');
-      // 空亡
       if (pd.isKong) pd.marks.push('空');
 
       const hS = pd.heavenStem, eS = pd.earthStem, door = pd.door, godS = pd.godShort;
 
-      // 凶格扫描（参考 daily_qimen.txt）
       const bad = [];
       if (hS === '乙' && eS === '辛') bad.push('青龙逃走');
       if (hS === '辛' && eS === '乙') bad.push('白虎猖狂');
@@ -940,7 +877,6 @@ const QimenEngine = {
       if ((hS==='丙'&&eS==='壬')||(hS==='壬'&&eS==='丙')) bad.push('火入天罗');
       pd.badForms = [...new Set(bad)];
 
-      // 吉格扫描（参考 daily_qimen.txt + 奇门九遁）
       const good = [];
       if (hS === '戊' && eS === '丙') good.push('青龙返首');
       if (hS === '丙' && eS === '戊') good.push('飞鸟跌穴');
@@ -970,7 +906,6 @@ const QimenEngine = {
 
       pd.goodForms.forEach(g => globalAuspicious.push({ name: g, palace: p, dir: pd.dir, gua: pd.gua, door: pd.door }));
 
-      // 出行诀分级评估（保留全8宫展示，严苛净界高分，瑕疵降级标黄/红）
       const isGoodDoor = ['开门','休门','生门'].includes(door);
       const isJingDoor = (door === '景门');
       const hasDefect = pd.marks.length > 0 || pd.badForms.length > 0;
@@ -1009,27 +944,18 @@ const QimenEngine = {
       }
     });
 
-    // 选出本盘推荐出行排序
     const ranking = RING_ORDER.map(p => palaces[p]).sort((a, b) => {
       if (b.eval.tier !== a.eval.tier) return b.eval.tier - a.eval.tier;
       return b.eval.reasons.length - a.eval.reasons.length;
     });
 
     return {
-      dateObj: new Date(dateObj.getTime()),
-      method,
-      wuBuJiMode,
+      dateObj: new Date(dateObj.getTime()), method, wuBuJiMode,
       bazi: { y: yGan+yZhi, m: mGan+mZhi, d: dGan+dZhi, h: hGan+hZhi, yGan, mGan, dGan, hGan, hZhi },
-      juInfo,
-      xunHeadGZ, xunShouStem, xunKongStr, xunKongZhis,
-      maZhi, maPalace,
-      zhiFuStar, zhiFuPalace: zfTargetPalace,
-      zhiShiDoor, zhiShiPalace: zsTargetPalace,
-      wuBuYuShi,
-      earthCenterStem: earthStem[5],
-      palaces,
-      ranking,
-      globalAuspicious
+      juInfo, xunHeadGZ, xunShouStem, xunKongStr, xunKongZhis,
+      maZhi, maPalace, zhiFuStar, zhiFuPalace: zfTargetPalace,
+      zhiShiDoor, zhiShiPalace: zsTargetPalace, wuBuYuShi,
+      earthCenterStem: earthStem[5], palaces, ranking, globalAuspicious
     };
   }
 };
@@ -1041,7 +967,7 @@ const state = {
   date: new Date(),
   method: 'ChaiBu',
   wuBuJiMode: 'zhishi',
-  labelMode: 'geju', // 'geju' | 'action'
+  labelMode: 'geju',
   tilt3D: false,
   rings: { ring1:true, ring2:true, ring3:true, ring4:true, ring5:true },
   heading: 0,
@@ -1055,7 +981,7 @@ const state = {
 const sensorCtrl = {
   absSensor: null,
   fallbackTimer: null,
-  channel: 'simulation', // 'absSensor' | 'orientationabsolute' | 'deviceorientation' | 'webkitCompass' | 'simulation'
+  channel: 'simulation',
   sinEma: null,
   cosEma: null,
   declination: parseFloat(localStorage.getItem('qm_declination') || '0') || 0,
@@ -1073,16 +999,12 @@ function normDeg(d) {
 
 function getDirLookup(deg) {
   const d = normDeg(deg);
-  // 8 宫 (每宫 45°, 坎 337.5°–22.5°)
   const pIdx = Math.floor(((d + 22.5) % 360) / 45);
   const palaceNum = RING_ORDER[pIdx];
-  // 12 地支 (每支 30°, 子 345°–15°)
   const zIdx = Math.floor(((d + 15) % 360) / 30);
   const zhiObj = ZHI_12[zIdx];
-  // 24 山 (每山 15°, 子 352.5°–7.5°)
   const sIdx = Math.floor(((d + 7.5) % 360) / 15);
   const shanObj = SHAN_24[sIdx];
-  // 检测是否接近八卦界线（大空亡缝 ±1.5°）
   const nearBoundary = GUA_BOUNDARIES.some(b => {
     const diff = Math.abs(((d - b + 540) % 360) - 180);
     return diff <= 1.5;
@@ -1101,74 +1023,87 @@ function updateDiagUI(force = false) {
   const modal = document.getElementById('diag-backdrop');
   if (!modal || !modal.classList.contains('open')) return;
   const now = performance.now();
-  if (!force && now - sensorCtrl.lastDiagUi < 100) return;
+  if (!force && now - sensorCtrl.lastDiagUi < 120) return;
   sensorCtrl.lastDiagUi = now;
 
-  // 滑窗计算最近 1 秒采样频率 (Hz)
   const cutoff = now - 1000;
   while (sensorCtrl.frameTimes.length && sensorCtrl.frameTimes[0] < cutoff) {
     sensorCtrl.frameTimes.shift();
   }
   sensorCtrl.hz = sensorCtrl.channel === 'simulation' ? 0 : sensorCtrl.frameTimes.length;
 
-  document.getElementById('diag-channel').textContent = sensorCtrl.channel;
-  document.getElementById('diag-hz').textContent = `${sensorCtrl.hz.toFixed(1)} Hz`;
-  document.getElementById('diag-r22').textContent = sensorCtrl.r22.toFixed(3);
-  document.getElementById('diag-angles').textContent = `${sensorCtrl.rawDeg.toFixed(1)}° / ${sensorCtrl.compDeg.toFixed(1)}°`;
+  const chEl = document.getElementById('diag-channel');
+  const hzEl = document.getElementById('diag-hz');
+  const r22El = document.getElementById('diag-r22');
+  const angEl = document.getElementById('diag-angles');
+  const footEl = document.getElementById('diag-foot');
+
+  if (chEl) chEl.textContent = sensorCtrl.channel;
+  if (hzEl) hzEl.textContent = `${sensorCtrl.hz.toFixed(1)} Hz`;
+  if (r22El) r22El.textContent = sensorCtrl.r22.toFixed(3);
+  if (angEl) angEl.textContent = `${sensorCtrl.rawDeg.toFixed(1)}° / ${sensorCtrl.compDeg.toFixed(1)}°`;
 
   document.querySelectorAll('#diag-ch-grid .diag-ch-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.ch === sensorCtrl.channel);
   });
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-  const platStr = isIOS
-    ? 'iOS / Safari (webkitCompass 瀑布流)'
-    : 'Android / 桌面设备 (AbsoluteOrientationSensor 瀑布流)';
-  document.getElementById('diag-foot').textContent =
-    `识别平台: ${platStr} | 安全上下文: ${isSecure ? 'HTTPS 安全' : '非 HTTPS 受限'} | 倾角补偿: 3D ENU 矩阵按 R22 在 +Y 与 -Z 间线性混合。`;
+  if (footEl) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const platStr = isIOS
+      ? 'iOS / Safari (webkitCompass 瀑布流)'
+      : 'Android / 桌面设备 (AbsoluteOrientationSensor 瀑布流)';
+    footEl.textContent =
+      `识别平台: ${platStr} | 安全上下文: ${isSecure ? 'HTTPS 安全' : '非 HTTPS 受限'} | 倾角补偿: 3D ENU 矩阵按 R22 在 +Y 与 -Z 间线性混合。`;
+  }
 }
 
 function openDiagModal() {
+  const modal = document.getElementById('diag-backdrop');
+  if (!modal) return;
   const slider = document.getElementById('diag-dec-slider');
   const valEl = document.getElementById('diag-dec-val');
-  slider.value = sensorCtrl.declination;
-  valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
 
-  if (sensorCtrl.channel === 'simulation') {
-    const simBase = normDeg(state.targetHeading - sensorCtrl.declination);
-    sensorCtrl.rawDeg = simBase;
-    sensorCtrl.compDeg = normDeg(state.targetHeading);
-  }
-
-  slider.oninput = () => {
-    sensorCtrl.declination = parseFloat(slider.value);
-    localStorage.setItem('qm_declination', String(sensorCtrl.declination));
+  if (slider && valEl) {
+    slider.value = sensorCtrl.declination;
     valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
 
-    if (sensorCtrl.sinEma !== null) {
-      const base = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
-      sensorCtrl.compDeg = normDeg(base + sensorCtrl.declination);
-      state.targetHeading = sensorCtrl.compDeg;
-    } else if (sensorCtrl.channel === 'simulation') {
+    if (sensorCtrl.channel === 'simulation') {
       const simSlider = document.getElementById('sim-slider');
-      const simBase = simSlider ? (parseFloat(simSlider.value) || 0) : sensorCtrl.rawDeg;
+      const simBase = simSlider ? (parseFloat(simSlider.value) || 0) : normDeg(state.targetHeading - sensorCtrl.declination);
       sensorCtrl.rawDeg = simBase;
       sensorCtrl.compDeg = normDeg(simBase + sensorCtrl.declination);
-      state.targetHeading = sensorCtrl.compDeg;
     }
-    updateDiagUI(true);
-  };
 
-  document.getElementById('diag-backdrop').classList.add('open');
+    slider.oninput = () => {
+      sensorCtrl.declination = parseFloat(slider.value);
+      localStorage.setItem('qm_declination', String(sensorCtrl.declination));
+      valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
+
+      if (sensorCtrl.sinEma !== null) {
+        const base = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+        sensorCtrl.compDeg = normDeg(base + sensorCtrl.declination);
+        state.targetHeading = sensorCtrl.compDeg;
+      } else if (sensorCtrl.channel === 'simulation') {
+        const simSlider = document.getElementById('sim-slider');
+        const simBase = simSlider ? (parseFloat(simSlider.value) || 0) : sensorCtrl.rawDeg;
+        sensorCtrl.rawDeg = simBase;
+        sensorCtrl.compDeg = normDeg(simBase + sensorCtrl.declination);
+        state.targetHeading = sensorCtrl.compDeg;
+      }
+      updateDiagUI(true);
+    };
+  }
+
+  modal.classList.add('open');
   updateDiagUI(true);
 }
 
 function closeDiagModal() {
-  document.getElementById('diag-backdrop').classList.remove('open');
+  const modal = document.getElementById('diag-backdrop');
+  if (modal) modal.classList.remove('open');
 }
 
-// 圆周自适应滤波 + 磁偏角补偿（防 0°/360° 过零跳变 & 压制相机 OIS/VCM 磁场尖峰）
 function feedHeading(rawDeg, r22Val) {
   if (!state.sensorActive || isNaN(rawDeg)) return;
   const d = normDeg(rawDeg);
@@ -1186,9 +1121,9 @@ function feedHeading(rawDeg, r22Val) {
     const prev = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
     const jump = Math.abs(((d - prev + 540) % 360) - 180);
     let alpha = 0.14;
-    if (jump < 1.2) alpha = 0.04;       // 静止微抖强滤
-    else if (jump > 45) alpha = 0.07;   // 相机马达电磁脉冲尖峰压制
-    else if (jump > 10) alpha = 0.22;   // 正常转身平滑跟手
+    if (jump < 1.2) alpha = 0.04;
+    else if (jump > 45) alpha = 0.07;
+    else if (jump > 10) alpha = 0.22;
 
     sensorCtrl.sinEma = sensorCtrl.sinEma * (1 - alpha) + s * alpha;
     sensorCtrl.cosEma = sensorCtrl.cosEma * (1 - alpha) + c * alpha;
@@ -1206,7 +1141,6 @@ function feedHeading(rawDeg, r22Val) {
   updateDiagUI();
 }
 
-// 辅助：按 R22 在 +Y（平放）与 -Z（竖举相机）水平投影间安全线性混合
 function blendENUHeading(topE, topN, camE, camN, r22) {
   const t = Math.max(0, Math.min(1, r22));
   const tLen = Math.hypot(topE, topN);
@@ -1224,7 +1158,6 @@ function blendENUHeading(topE, topN, camE, camN, r22) {
   return { deg: normDeg(Math.atan2(E, N) * 180 / Math.PI), r22 };
 }
 
-// 四元数 -> ENU 航向 + R22（无万向锁）
 function headingFromQuaternion(q) {
   const [x, y, z, w] = q;
   const topE = 2 * (x * y - z * w);
@@ -1235,7 +1168,6 @@ function headingFromQuaternion(q) {
   return blendENUHeading(topE, topN, camE, camN, r22);
 }
 
-// 欧拉角 -> ENU 航向 + R22
 function headingFromEuler(alpha, beta, gamma) {
   const r = Math.PI / 180;
   const a = alpha * r, b = beta * r, g = gamma * r;
@@ -1249,7 +1181,6 @@ function headingFromEuler(alpha, beta, gamma) {
   return blendENUHeading(topE, topN, camE, camN, r22);
 }
 
-// 2 号通道独占回调：deviceorientationabsolute
 function onAbsEvent(e) {
   if (!state.sensorActive || sensorCtrl.channel !== 'orientationabsolute') return;
   if (e.alpha === null || e.beta === null || e.gamma === null) return;
@@ -1257,7 +1188,6 @@ function onAbsEvent(e) {
   feedHeading(res.deg, res.r22);
 }
 
-// 3/4 号通道独占回调：deviceorientation / webkitCompass
 function onDeviceEvent(e) {
   if (!state.sensorActive) return;
   if (sensorCtrl.channel === 'webkitCompass') {
@@ -1318,7 +1248,6 @@ async function ensureIOSPermission() {
   return true;
 }
 
-// 严格单源互斥切换（供诊断面板 5 个通道按钮调用）
 async function forceSensorChannel(ch) {
   stopAllSensors();
   if (ch === 'simulation') {
@@ -1378,7 +1307,6 @@ async function forceSensorChannel(ch) {
   }
 }
 
-// 自动瀑布流检测：iOS webkitCompass -> absSensor -> orientationabsolute -> deviceorientation -> simulation
 async function runAutoWaterfall() {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (isIOS) {
@@ -1443,13 +1371,12 @@ async function toggleCamera() {
     video.classList.add('active');
     bgGrid.classList.add('ar-on');
     btn.classList.add('active');
-    // 相机通电后 OIS 磁铁会产生初始跳变，重置滤波缓存让其迅速重新收敛
     resetSensorFilter();
   } catch (err) {
     alert('无法启动摄像头（请确认已授权且为 HTTPS 链接）：' + err.message);
   }
 }
-  
+
 /* ============================================================================
  * 五、SVG 5-Ring 罗盘高清渲染引擎
  * ============================================================================ */
@@ -1487,7 +1414,7 @@ function renderCompassSVG() {
   if (!chart) return;
   const cx = 500, cy = 500;
 
-  // --- Ring 5: 24 山精密刻度环 (r: 446..494) ---
+  // Ring 5: 24 山精密刻度环 (r: 446..494)
   const g5 = document.getElementById('ring5-24shan');
   g5.innerHTML = '';
   g5.style.display = state.rings.ring5 ? '' : 'none';
@@ -1503,18 +1430,16 @@ function renderCompassSVG() {
         fill: s.type === 'gua' ? '#fde68a' : (s.type === 'zhi' ? '#e5e7eb' : '#9ca3af'),
         'font-size': 18, 'font-weight': s.type === 'gua' ? '800' : '600'
       }));
-      // 刻度小线
       const t1 = polar(cx, cy, 488, s.center), t2 = polar(cx, cy, 494, s.center);
       g5.appendChild(svgEl('line', { x1:t1.x, y1:t1.y, x2:t2.x, y2:t2.y, stroke:'#e2be67', 'stroke-width':1.5 }));
     });
-    // 八卦界线红刻度（大空亡缝）
     GUA_BOUNDARIES.forEach(b => {
       const p1 = polar(cx, cy, 442, b), p2 = polar(cx, cy, 496, b);
       g5.appendChild(svgEl('line', { x1:p1.x, y1:p1.y, x2:p2.x, y2:p2.y, stroke:'#ef4444', 'stroke-width':2.4, opacity:0.85 }));
     });
   }
 
-  // --- Ring 4: 12 地支环 (r: 396..446) ---
+  // Ring 4: 12 地支环 (r: 396..446)
   const g4 = document.getElementById('ring4-12zhi');
   g4.innerHTML = '';
   g4.style.display = state.rings.ring4 ? '' : 'none';
@@ -1544,7 +1469,7 @@ function renderCompassSVG() {
     });
   }
 
-  // --- Ring 3: 格局 / 现代行动象意环 (r: 334..396) ---
+  // Ring 3: 格局 / 现代行动象意环 (r: 334..396)
   const g3 = document.getElementById('ring3-geju');
   g3.innerHTML = '';
   g3.style.display = state.rings.ring3 ? '' : 'none';
@@ -1590,7 +1515,7 @@ function renderCompassSVG() {
     });
   }
 
-  // --- Ring 2: 出行诀评级 & 三胜五不击导航环 (r: 264..334) ---
+  // Ring 2: 出行诀评级 & 三胜五不击导航环 (r: 264..334)
   const g2 = document.getElementById('ring2-chuxing');
   g2.innerHTML = '';
   g2.style.display = state.rings.ring2 ? '' : 'none';
@@ -1615,13 +1540,11 @@ function renderCompassSVG() {
         'stroke-width': ev.tier >= 3 ? 2.4 : 1.3
       }));
 
-      // 评级大字
       grp.appendChild(radialText(cx, cy, 307, pd.center, ev.label, {
         fill: ev.status === 'bad' ? '#fca5a5' : '#ffffff',
         'font-size': 19, 'font-weight': '800'
       }));
 
-      // 三胜 / 五不击 / 迫刑墓空标
       const badges = [];
       if (pd.isSanSheng) badges.push('三胜');
       else if (pd.isWuBuJi) badges.push('五不击');
@@ -1636,7 +1559,7 @@ function renderCompassSVG() {
     });
   }
 
-  // --- Ring 1: 奇门八宫核心排盘环 (r: 108..264) ---
+  // Ring 1: 奇门八宫核心排盘环 (r: 108..264)
   const g1 = document.getElementById('ring1-qimen');
   g1.innerHTML = '';
   g1.style.display = state.rings.ring1 ? '' : 'none';
@@ -1653,13 +1576,11 @@ function renderCompassSVG() {
         stroke: 'rgba(226,190,103,0.5)', 'stroke-width': 1.6
       }));
 
-      // 外缘：八神
       grp.appendChild(radialText(cx, cy, 240, pd.center, pd.god, {
         fill: ['值符','太阴','九地','九天'].includes(pd.god) ? '#fde68a' : '#cbd5e1',
         'font-size': 20, 'font-weight': '800'
       }));
 
-      // 中上：九星 + 天盘干
       const starTxt = pd.star + (pd.hasQin ? '禽' : '');
       grp.appendChild(radialText(cx, cy, 206, pd.center - 7, starTxt, {
         fill: '#93c5fd', 'font-size': 17, 'font-weight': '700'
@@ -1670,7 +1591,6 @@ function renderCompassSVG() {
         'font-size': 22, 'font-weight': '900'
       }));
 
-      // 中下：八门 + 地盘干
       const doorColor = ['开门','休门','生门'].includes(pd.door) ? '#34d399' : (pd.door === '景门' ? '#fbbf24' : '#f87171');
       grp.appendChild(radialText(cx, cy, 166, pd.center - 7, pd.door, {
         fill: doorColor, 'font-size': 22, 'font-weight': '900'
@@ -1680,7 +1600,6 @@ function renderCompassSVG() {
         fill: '#9ca3af', 'font-size': 19, 'font-weight': '700'
       }));
 
-      // 内缘：宫位卦名 + 洛书数
       grp.appendChild(radialText(cx, cy, 128, pd.center, `${pd.gua}${pNum}`, {
         fill: 'rgba(226,190,103,0.85)', 'font-size': 16, 'font-weight': '800'
       }));
@@ -1689,7 +1608,7 @@ function renderCompassSVG() {
     });
   }
 
-  // --- 中五宫中心圆盘 (r: 0..108) ---
+  // 中五宫中心圆盘 (不随转盘倒转)
   const hub = document.getElementById('center-hub');
   hub.innerHTML = '';
   hub.appendChild(svgEl('circle', { cx, cy, r: 108, fill: 'url(#centerGlow)', stroke: '#e2be67', 'stroke-width': 2.5 }));
@@ -1745,13 +1664,13 @@ function updateHeadingHUD() {
 }
 
 function animateLoop() {
-  // 最短角插值平滑防抖
   const diff = ((state.targetHeading - state.heading + 540) % 360) - 180;
   if (Math.abs(diff) > 0.05) {
     state.heading = normDeg(state.heading + diff * 0.22);
     document.getElementById('wheel-group').setAttribute('transform', `rotate(${-state.heading.toFixed(2)} 500 500)`);
     updateHeadingHUD();
   }
+  updateDiagUI();
   requestAnimationFrame(animateLoop);
 }
 
@@ -1786,8 +1705,6 @@ function openPalaceDetail(pNum) {
   const pd = c.palaces[pNum];
   const intent = DOOR_INTENTS[pd.door];
   const stemTip = STEM_TIPS[pd.heavenStem] || '';
-  const shanRange = pd.shan.join(' / ');
-  const zhiRange = pd.zhi.join(' / ');
 
   const html = `
     <div class="card ${pd.eval.status}">
@@ -1796,7 +1713,7 @@ function openPalaceDetail(pNum) {
         <span class="level-badge" style="background:${pd.eval.color}">${pd.eval.label}</span>
       </div>
       <div style="font-size:12px;color:var(--muted)">
-        24山范围：<strong>${shanRange}</strong>（中心 ${pd.center}°）｜12地支：<strong>${zhiRange}</strong>
+        24山范围：<strong>${pd.shan.join(' / ')}</strong>（中心 ${pd.center}°）｜12地支：<strong>${pd.zhi.join(' / ')}</strong>
       </div>
       <div class="pill-row">
         <span class="pill y">八神: ${pd.god}</span>
@@ -1825,19 +1742,22 @@ function openPalaceDetail(pNum) {
       <div style="margin-top:6px;color:var(--gold)">✨ 念头聚焦：「${intent.affirm}」</div>
     </div>
 
-    <button class="btn-full" onclick="pointCompassTo(${pd.center});closeModal();">🧭 在模拟罗盘中指向此方位（${pd.dir} ${pd.center}°）</button>
+    <button type="button" class="btn-full" onclick="pointCompassTo(${pd.center});closeModal();">🧭 在模拟罗盘中指向此方位（${pd.dir} ${pd.center}°）</button>
   `;
   openModal(`${pd.dir} · ${pd.gua}${pd.num}宫详批`, html);
 }
 
 function pointCompassTo(deg) {
-  if (state.sensorActive) toggleSensorMode();
-  state.targetHeading = deg;
-  document.getElementById('sim-slider').value = deg;
-  document.getElementById('sim-val').textContent = deg + '°';
+  if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+  sensorCtrl.rawDeg = deg;
+  sensorCtrl.compDeg = normDeg(deg + sensorCtrl.declination);
+  state.targetHeading = sensorCtrl.compDeg;
+  const slider = document.getElementById('sim-slider');
+  const simVal = document.getElementById('sim-val');
+  if (slider) slider.value = deg;
+  if (simVal) simVal.textContent = deg + '°';
 }
 
-/* 出行诀弹窗：正查（当前盘） + 反查（未来7天找最近5个吉时） */
 let cxTab = 'forward';
 function openChuXingModal(tab = 'forward') {
   cxTab = tab;
@@ -1846,8 +1766,8 @@ function openChuXingModal(tab = 'forward') {
 
   let body = `
     <div class="tab-bar">
-      <button class="tab-btn ${cxTab==='forward'?'active':''}" onclick="openChuXingModal('forward')">📍 正查当前盘方位</button>
-      <button class="tab-btn ${cxTab==='reverse'?'active':''}" onclick="openChuXingModal('reverse')">🔎 反查最佳出行时间</button>
+      <button type="button" class="tab-btn ${cxTab==='forward'?'active':''}" onclick="openChuXingModal('forward')">📍 正查当前盘方位</button>
+      <button type="button" class="tab-btn ${cxTab==='reverse'?'active':''}" onclick="openChuXingModal('reverse')">🔎 反查最佳出行时间</button>
     </div>
   `;
 
@@ -1905,7 +1825,7 @@ function openChuXingModal(tab = 'forward') {
             <option value="relaxed">宽松模式（允许轻微瑕疵或景门）</option>
           </select>
         </div>
-        <button class="btn-full" onclick="runReverseSearch()">🔍 扫描未来 7 天最近 5 个吉时</button>
+        <button type="button" class="btn-full" onclick="runReverseSearch()">🔍 扫描未来 7 天最近 5 个吉时</button>
       </div>
       <div id="rev-results"></div>
     `;
@@ -1919,9 +1839,7 @@ function runReverseSearch() {
   const strict = document.getElementById('rev-strict').value === 'strict';
   const results = [];
 
-  // 从当前时间往后逐时辰（+2小时）扫描 84 个时辰（7天）
   let scan = new Date(state.date.getTime());
-  // 对齐到当前时辰中点（偶点数 0,2,4..22）
   const curH = scan.getHours();
   const alignedH = curH === 23 ? 23 : (curH % 2 === 1 ? curH + 1 : curH);
   scan.setHours(alignedH, 0, 0, 0);
@@ -1968,7 +1886,7 @@ function runReverseSearch() {
           ${r.pd.dir} · ${r.pd.door} · ${r.pd.god} · ${r.pd.star} · ${r.pd.heavenStem}/${r.pd.earthStem}
           ${r.pd.goodForms.length ? '<br>吉格：' + r.pd.goodForms.join('、') : ''}
         </div>
-        <button style="margin-top:8px;padding:5px 10px;border-radius:6px;border:1px solid var(--gold);background:rgba(226,190,103,0.16);color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;"
+        <button type="button" style="margin-top:8px;padding:5px 10px;border-radius:6px;border:1px solid var(--gold);background:rgba(226,190,103,0.16);color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;"
           onclick="jumpToTime(${d.getTime()}, ${targetP})">🎯 切到此吉时并在罗盘指向${r.pd.dir}</button>
       </div>
     `;
@@ -1982,7 +1900,6 @@ function jumpToTime(ts, targetP) {
   closeModal();
 }
 
-/* 吉格总览 & 三胜五不击 */
 function openSummaryModal() {
   const c = state.chart;
   if (!c) return;
@@ -2017,7 +1934,6 @@ function openSummaryModal() {
   openModal('🌟 吉格总览与三胜五不击', html);
 }
 
-/* 时间选择弹窗 */
 function openTimeModal() {
   const d = state.date;
   const pad = n => (n < 10 ? '0' : '') + n;
@@ -2028,7 +1944,7 @@ function openTimeModal() {
         <label>公历时间</label>
         <input type="datetime-local" id="dt-input" value="${localVal}">
       </div>
-      <button class="btn-full" onclick="applyCustomTime()">确认排盘</button>
+      <button type="button" class="btn-full" onclick="applyCustomTime()">确认排盘</button>
     </div>
   `;
   openModal('📅 自选排盘时间（时家）', html);
@@ -2065,7 +1981,6 @@ function toggleTilt3D() {
  * 八、手势拖拽旋转 & 事件绑定初始化
  * ============================================================================ */
 function initInteractions() {
-  // 流派切换
   document.querySelectorAll('#method-seg button').forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll('#method-seg button').forEach(b => b.classList.remove('active'));
@@ -2075,7 +1990,6 @@ function initInteractions() {
     };
   });
 
-  // 5 环独立开关
   document.querySelectorAll('#ring-toggles .chip[data-ring]').forEach(btn => {
     btn.onclick = () => {
       const k = btn.dataset.ring;
@@ -2085,18 +1999,19 @@ function initInteractions() {
     };
   });
 
-  // 手动滑块
   const slider = document.getElementById('sim-slider');
   const simVal = document.getElementById('sim-val');
   slider.oninput = () => {
-    if (state.sensorActive) toggleSensorMode();
-    state.targetHeading = parseFloat(slider.value);
-    simVal.textContent = `${state.targetHeading.toFixed(1)}°`;
+    if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+    const raw = parseFloat(slider.value);
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    simVal.textContent = `${raw.toFixed(1)}°`;
   };
 
-  // 罗盘舞台触摸/鼠标旋转（手动模拟模式下）
   const stage = document.getElementById('compass-stage');
-  let dragging = false, startAngle = 0, startHeading = 0;
+  let dragging = false, startAngle = 0, startRaw = 0;
   function getPointerAngle(e) {
     const rect = stage.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
@@ -2105,28 +2020,26 @@ function initInteractions() {
     return Math.atan2(pt.clientY - cy, pt.clientX - cx) * (180 / Math.PI);
   }
   stage.addEventListener('pointerdown', e => {
-    if (e.target.closest('.palace-hit') && state.sensorActive) return;
     if (state.sensorActive) return;
     dragging = true;
     startAngle = getPointerAngle(e);
-    startHeading = state.targetHeading;
+    startRaw = sensorCtrl.rawDeg;
   });
   window.addEventListener('pointermove', e => {
     if (!dragging) return;
-    const cur = getPointerAngle(e);
-    const delta = cur - startAngle;
-    state.targetHeading = normDeg(startHeading - delta);
-    slider.value = state.targetHeading;
-    simVal.textContent = `${state.targetHeading.toFixed(1)}°`;
+    const delta = getPointerAngle(e) - startAngle;
+    const raw = normDeg(startRaw - delta);
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    slider.value = raw;
+    simVal.textContent = `${raw.toFixed(1)}°`;
   });
   window.addEventListener('pointerup', () => { dragging = false; });
 
-  // 非 HTTPS 提醒 & 默认展开模拟条
   const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-  if (!isSecure) {
-    document.getElementById('https-banner').classList.add('show');
-  }
-  document.getElementById('sim-bar').classList.add('show');
+  if (!isSecure) document.getElementById('https-banner').classList.add('show');
+  syncSensorDockUI();
 }
 
 window.__onLunarReady = function() {
