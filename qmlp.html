@@ -928,13 +928,13 @@ const QimenEngine = {
 };
 
 /* ============================================================================
- * 四、应用状态 & 3D 零漂移罗盘传感器引擎
+ * 四、应用状态 & 防跳变 3D 传感器引擎（四元数优先 + 严格单流 + 圆周滤波）
  * ============================================================================ */
 const state = {
   date: new Date(),
   method: 'ChaiBu',
   wuBuJiMode: 'zhishi',
-  labelMode: 'geju', // 'geju' | 'action'
+  labelMode: 'geju',
   tilt3D: false,
   rings: { ring1:true, ring2:true, ring3:true, ring4:true, ring5:true },
   heading: 0,
@@ -945,20 +945,24 @@ const state = {
   chart: null
 };
 
+const sensorCtrl = {
+  absSensor: null,
+  fallbackTimer: null,
+  mode: 'none',       // 'quat' | 'abs' | 'rel' | 'none'
+  sinEma: null,
+  cosEma: null
+};
+
 function normDeg(d) { return ((d % 360) + 360) % 360; }
 
 function getDirLookup(deg) {
   const d = normDeg(deg);
-  // 8 宫 (每宫45°, 坎 337.5..22.5)
   const pIdx = Math.floor(((d + 22.5) % 360) / 45);
   const palaceNum = RING_ORDER[pIdx];
-  // 12 地支 (每支30°, 子 345..15)
   const zIdx = Math.floor(((d + 15) % 360) / 30);
   const zhiObj = ZHI_12[zIdx];
-  // 24 山 (每山15°, 子 352.5..7.5)
   const sIdx = Math.floor(((d + 7.5) % 360) / 15);
   const shanObj = SHAN_24[sIdx];
-  // 检测是否落入八卦大空亡界线 (±1.5°)
   const nearBoundary = GUA_BOUNDARIES.some(b => {
     const diff = Math.abs(((d - b + 540) % 360) - 180);
     return diff <= 1.5;
@@ -966,44 +970,156 @@ function getDirLookup(deg) {
   return { deg: d, palaceNum, zhiObj, shanObj, nearBoundary };
 }
 
-// 3D ENU 融合解算：平放看屏幕顶(+Y)，竖举看后置摄像头(-Z)，任意俯仰角零翻转
-function compute3DHeading(alpha, beta, gamma) {
-  const deg2rad = Math.PI / 180;
-  const a = alpha * deg2rad;
-  const b = beta * deg2rad;
-  const g = gamma * deg2rad;
+function resetSensorFilter() {
+  sensorCtrl.sinEma = null;
+  sensorCtrl.cosEma = null;
+}
 
+// 圆周自适应滤波：彻底消除 0°/360° 过零跳变 & 相机 OIS/VCM 磁场脉冲
+function feedHeading(rawDeg, tag) {
+  if (!state.sensorActive || isNaN(rawDeg)) return;
+  const d = normDeg(rawDeg);
+  const lbl = document.getElementById('sensor-lbl');
+  if (lbl && tag) lbl.textContent = tag;
+
+  const rad = d * Math.PI / 180;
+  const s = Math.sin(rad), c = Math.cos(rad);
+
+  if (sensorCtrl.sinEma === null) {
+    sensorCtrl.sinEma = s;
+    sensorCtrl.cosEma = c;
+    state.targetHeading = d;
+    return;
+  }
+
+  const prev = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+  const jump = Math.abs(((d - prev + 540) % 360) - 180);
+
+  // 自适应阻尼：微抖强滤 / 相机电磁脉冲尖峰(>45°)压制 / 正常匀速转身平滑跟手
+  let alpha = 0.14;
+  if (jump < 1.2) alpha = 0.04;
+  else if (jump > 45) alpha = 0.07;
+  else if (jump > 10) alpha = 0.22;
+
+  sensorCtrl.sinEma = sensorCtrl.sinEma * (1 - alpha) + s * alpha;
+  sensorCtrl.cosEma = sensorCtrl.cosEma * (1 - alpha) + c * alpha;
+  const len = Math.hypot(sensorCtrl.sinEma, sensorCtrl.cosEma) || 1;
+  sensorCtrl.sinEma /= len;
+  sensorCtrl.cosEma /= len;
+
+  const filtered = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+  const outDiff = Math.abs(((filtered - state.targetHeading + 540) % 360) - 180);
+  if (outDiff >= 0.4) {
+    state.targetHeading = filtered;
+  }
+}
+
+// 四元数 -> ENU 航向（无万向锁：平放看屏幕顶 +Y，竖举看后置镜头 -Z，中间平滑过渡）
+function headingFromQuaternion(q) {
+  const [x, y, z, w] = q;
+  // 设备 +Y（屏幕顶）在 ENU 水平面投影
+  const topE = 2 * (x * y - z * w);
+  const topN = 1 - 2 * (x * x + z * z);
+  // 设备 -Z（后置镜头）在 ENU 水平面投影
+  const camE = -2 * (x * z + y * w);
+  const camN = -2 * (y * z - x * w);
+  // uZ = 1 平放朝天，uZ = 0 竖直举起
+  const uZ = 1 - 2 * (x * x + y * y);
+
+  let E, N;
+  if (uZ > 0.85) {
+    E = topE; N = topN;
+  } else if (uZ < 0.55) {
+    E = camE; N = camN;
+  } else {
+    const t = (uZ - 0.55) / 0.30; // 0(竖举) -> 1(平放)
+    const tLen = Math.hypot(topE, topN) || 1;
+    const cLen = Math.hypot(camE, camN) || 1;
+    E = t * (topE / tLen) + (1 - t) * (camE / cLen);
+    N = t * (topN / tLen) + (1 - t) * (camN / cLen);
+  }
+  return normDeg(Math.atan2(E, N) * 180 / Math.PI);
+}
+
+// 欧拉角 -> ENU 航向（回退用）
+function compute3DHeading(alpha, beta, gamma) {
+  const r = Math.PI / 180;
+  const a = alpha * r, b = beta * r, g = gamma * r;
   const cA = Math.cos(a), sA = Math.sin(a);
   const cB = Math.cos(b), sB = Math.sin(b);
   const cG = Math.cos(g), sG = Math.sin(g);
 
-  // Col 1 (+Y 屏幕顶) 的 ENU 水平投影
-  const topE = -sA * cB;
-  const topN =  cA * cB;
-
-  // -Col 2 (-Z 后置镜头) 的 ENU 水平投影
+  const topE = -sA * cB, topN = cA * cB;
   const camE = -(cA * sG + sA * sB * cG);
   const camN = -(sA * sG - cA * sB * cG);
+  const uZ = cB * cG;
 
-  const wTop = Math.max(0, cB);
-  const wCam = Math.max(0, sB);
-
-  const E = wTop * topE + wCam * camE;
-  const N = wTop * topN + wCam * camN;
-
-  let hdg = Math.atan2(E, N) * (180 / Math.PI);
-  return normDeg(hdg);
+  let E, N;
+  if (uZ > 0.85) {
+    E = topE; N = topN;
+  } else if (uZ < 0.55) {
+    E = camE; N = camN;
+  } else {
+    const t = (uZ - 0.55) / 0.30;
+    const tLen = Math.hypot(topE, topN) || 1;
+    const cLen = Math.hypot(camE, camN) || 1;
+    E = t * (topE / tLen) + (1 - t) * (camE / cLen);
+    N = t * (topN / tLen) + (1 - t) * (camN / cLen);
+  }
+  return normDeg(Math.atan2(E, N) * 180 / Math.PI);
 }
 
-function handleOrientation(e) {
-  if (!state.sensorActive) return;
-  let hdg = null;
-  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
-    hdg = normDeg(e.webkitCompassHeading);
-  } else if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
-    hdg = compute3DHeading(e.alpha, e.beta, e.gamma);
+// 独占事件回调：绝对方向事件（仅安卓回退用）
+function onAbsOrientation(e) {
+  if (!state.sensorActive || sensorCtrl.mode !== 'abs') return;
+  if (e.alpha === null || e.beta === null || e.gamma === null) return;
+  if (sensorCtrl.fallbackTimer) {
+    clearTimeout(sensorCtrl.fallbackTimer);
+    sensorCtrl.fallbackTimer = null;
   }
-  if (hdg !== null) state.targetHeading = hdg;
+  feedHeading(compute3DHeading(e.alpha, e.beta, e.gamma), 'ABS北');
+}
+
+// 独占事件回调：常规方向事件（仅 iOS 或无 ABS 时使用，绝不与 ABS 同时挂载）
+function onRelOrientation(e) {
+  if (!state.sensorActive || sensorCtrl.mode !== 'rel') return;
+  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+    feedHeading(e.webkitCompassHeading, 'iOS北');
+  } else if (e.absolute === true && e.alpha !== null && e.beta !== null && e.gamma !== null) {
+    feedHeading(compute3DHeading(e.alpha, e.beta, e.gamma), 'ABS北');
+  } else if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
+    feedHeading(compute3DHeading(e.alpha, e.beta, e.gamma), '相对角');
+  }
+}
+
+function stopAllSensors() {
+  if (sensorCtrl.fallbackTimer) {
+    clearTimeout(sensorCtrl.fallbackTimer);
+    sensorCtrl.fallbackTimer = null;
+  }
+  if (sensorCtrl.absSensor) {
+    try { sensorCtrl.absSensor.stop(); } catch (_) {}
+    sensorCtrl.absSensor = null;
+  }
+  window.removeEventListener('deviceorientationabsolute', onAbsOrientation, true);
+  window.removeEventListener('deviceorientation', onRelOrientation, true);
+  sensorCtrl.mode = 'none';
+  resetSensorFilter();
+}
+
+function startEventFallback() {
+  stopAllSensors();
+  // 先独占尝试 deviceorientationabsolute，绝不同时挂 deviceorientation
+  sensorCtrl.mode = 'abs';
+  window.addEventListener('deviceorientationabsolute', onAbsOrientation, true);
+
+  // 若 800ms 内没收到绝对事件（如 iOS Safari），再卸载 ABS 切到 deviceorientation
+  sensorCtrl.fallbackTimer = setTimeout(() => {
+    if (!state.sensorActive || sensorCtrl.mode !== 'abs') return;
+    window.removeEventListener('deviceorientationabsolute', onAbsOrientation, true);
+    sensorCtrl.mode = 'rel';
+    window.addEventListener('deviceorientation', onRelOrientation, true);
+  }, 800);
 }
 
 async function toggleSensorMode() {
@@ -1013,8 +1129,7 @@ async function toggleSensorMode() {
 
   if (state.sensorActive) {
     state.sensorActive = false;
-    window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
-    window.removeEventListener('deviceorientation', handleOrientation, true);
+    stopAllSensors();
     btn.classList.remove('active');
     lbl.textContent = '手动中';
     simBar.classList.add('show');
@@ -1022,6 +1137,7 @@ async function toggleSensorMode() {
   }
 
   try {
+    // iOS 13+ 权限申请
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       const res = await DeviceOrientationEvent.requestPermission();
       if (res !== 'granted') {
@@ -1029,14 +1145,56 @@ async function toggleSensorMode() {
         simBar.classList.add('show');
         return;
       }
+      state.sensorActive = true;
+      stopAllSensors();
+      sensorCtrl.mode = 'rel';
+      window.addEventListener('deviceorientation', onRelOrientation, true);
+      btn.classList.add('active');
+      lbl.textContent = 'iOS北';
+      simBar.classList.remove('show');
+      return;
     }
+
     state.sensorActive = true;
-    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-    window.addEventListener('deviceorientation', handleOrientation, true);
     btn.classList.add('active');
-    lbl.textContent = '磁感开';
     simBar.classList.remove('show');
+
+    // 优先尝试四元数 AbsoluteOrientationSensor（安卓 Chrome 最稳、无万向锁）
+    if ('AbsoluteOrientationSensor' in window) {
+      try {
+        stopAllSensors();
+        sensorCtrl.mode = 'quat';
+        const sensor = new AbsoluteOrientationSensor({ frequency: 30, referenceFrame: 'device' });
+        sensorCtrl.absSensor = sensor;
+
+        let gotReading = false;
+        sensor.addEventListener('reading', () => {
+          if (!state.sensorActive || sensorCtrl.mode !== 'quat' || !sensor.quaternion) return;
+          gotReading = true;
+          feedHeading(headingFromQuaternion(sensor.quaternion), '四元数');
+        });
+        sensor.addEventListener('error', () => {
+          if (state.sensorActive && sensorCtrl.mode === 'quat') startEventFallback();
+        });
+        sensor.start();
+
+        // 若 800ms 内四元数无数据，自动降级到独占 ABS 事件
+        sensorCtrl.fallbackTimer = setTimeout(() => {
+          if (state.sensorActive && sensorCtrl.mode === 'quat' && !gotReading) {
+            startEventFallback();
+          }
+        }, 800);
+        return;
+      } catch (_) {
+        startEventFallback();
+        return;
+      }
+    }
+
+    startEventFallback();
   } catch (err) {
+    state.sensorActive = false;
+    stopAllSensors();
     alert('当前环境不支持自动磁感罗盘，已开启手动模拟滑动。');
     simBar.classList.add('show');
   }
@@ -1072,11 +1230,13 @@ async function toggleCamera() {
     video.classList.add('active');
     bgGrid.classList.add('ar-on');
     btn.classList.add('active');
+    // 相机通电后 OIS 磁铁会产生一次初始阶跃，清空滤波缓存让其迅速重新收敛
+    resetSensorFilter();
   } catch (err) {
     alert('无法启动摄像头（请确认已授权且为 HTTPS 链接）：' + err.message);
   }
 }
-
+  
 /* ============================================================================
  * 五、SVG 5-Ring 罗盘高清渲染引擎
  * ============================================================================ */
