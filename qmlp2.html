@@ -1,0 +1,2227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>奇门出行诀 · 5环 AR 实景罗盘</title>
+<!-- 优先读取同目录离线 lunar.js，失败自动回退 CDN -->
+<script src="./lunar.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.12/lunar.min.js';s.onload=function(){window.__onLunarReady&&window.__onLunarReady();};document.head.appendChild(s);"></script>
+<style>
+  :root {
+    --bg: #070b14;
+    --panel: rgba(11, 17, 30, 0.84);
+    --panel-solid: #0c1322;
+    --border: rgba(212, 175, 55, 0.34);
+    --gold: #e2be67;
+    --text: #f3f4f6;
+    --muted: #9ca3af;
+    --l4: #10b981;
+    --l3: #22d3ee;
+    --l2: #60a5fa;
+    --l1: #84cc16;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  /* 摄像头底层 */
+  #camera-video {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; z-index: 0; display: none;
+    filter: brightness(0.78) contrast(1.05);
+  }
+  #camera-video.active { display: block; }
+  #bg-grid {
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(circle at 50% 48%, rgba(28, 45, 78, 0.55) 0%, rgba(7, 11, 20, 0.96) 72%),
+      linear-gradient(rgba(226,190,103,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(226,190,103,0.04) 1px, transparent 1px);
+    background-size: 100% 100%, 36px 36px, 36px 36px;
+    transition: opacity .3s;
+  }
+  #bg-grid.ar-on { opacity: 0.25; }
+
+  /* 顶部 HUD */
+  .top-hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    padding: calc(env(safe-area-inset-top, 8px) + 6px) 10px 8px;
+    background: linear-gradient(180deg, rgba(7,11,20,0.92) 0%, rgba(7,11,20,0.68) 80%, transparent 100%);
+    pointer-events: none;
+  }
+  .top-hud > * { pointer-events: auto; }
+  .hud-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  }
+  .hud-left-group { display: flex; align-items: center; gap: 6px; }
+  .brand-pill {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--gold);
+    backdrop-filter: blur(8px);
+  }
+  .diag-trigger {
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--gold); border-radius: 999px; padding: 4px 8px;
+    font-size: 11px; font-weight: 700; cursor: pointer; backdrop-filter: blur(8px);
+  }
+  .method-seg {
+    display: flex; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; overflow: hidden; backdrop-filter: blur(8px);
+  }
+  .method-seg button {
+    background: none; border: none; color: var(--muted);
+    padding: 4px 8px; font-size: 11px; cursor: pointer; font-weight: 600;
+  }
+  .method-seg button.active { background: var(--gold); color: #111827; }
+
+  .meta-bar {
+    margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px;
+    font-size: 11px; color: #d1d5db;
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; padding: 5px 9px; backdrop-filter: blur(8px);
+  }
+  .meta-bar .bazi { color: var(--gold); font-weight: 700; letter-spacing: 0.5px; }
+  .meta-bar .tag-bad {
+    background: rgba(239,68,68,0.22); border: 1px solid var(--bad);
+    color: #fca5a5; padding: 1px 6px; border-radius: 4px; font-weight: 700;
+  }
+
+  /* 准星实时朝向卡片 */
+  .heading-card {
+    margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: rgba(10, 16, 28, 0.86); border: 1px solid var(--border);
+    border-radius: 12px; padding: 7px 10px; backdrop-filter: blur(10px);
+    cursor: pointer;
+  }
+  .heading-left { display: flex; align-items: baseline; gap: 6px; }
+  .heading-deg { font-size: 22px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+  .heading-dir { font-size: 12px; color: var(--gold); font-weight: 700; }
+  .heading-right { text-align: right; font-size: 11px; line-height: 1.35; }
+  .level-badge {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-weight: 700; font-size: 11px; color: #09101c;
+  }
+  .crack-warn {
+    margin-top: 4px; font-size: 11px; color: #fde68a; background: rgba(245,158,11,0.2);
+    border: 1px solid rgba(245,158,11,0.6); border-radius: 6px; padding: 3px 8px;
+    text-align: center; display: none;
+  }
+  .crack-warn.show { display: block; }
+  .https-banner {
+    display: none; margin-top: 4px; font-size: 11px; color: #fca5a5;
+    background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.5);
+    border-radius: 6px; padding: 3px 8px; text-align: center;
+  }
+  .https-banner.show { display: block; }
+
+  /* 罗盘舞台 */
+  .compass-stage {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    padding-top: 108px; padding-bottom: 128px;
+    touch-action: none;
+  }
+  .compass-shell {
+    position: relative;
+    width: min(94vw, 62vh, 520px);
+    height: min(94vw, 62vh, 520px);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.35s ease;
+  }
+  .compass-shell.tilt-3d {
+    transform: perspective(900px) rotateX(28deg) scale(1.03);
+  }
+
+  /* 固定准星与天心十道 */
+  .lubber-line {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    z-index: 12; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .lubber-tri {
+    width: 0; height: 0;
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-top: 13px solid #ef4444;
+    filter: drop-shadow(0 0 6px rgba(239,68,68,0.85));
+  }
+  .lubber-stem {
+    width: 2px; height: 48%; position: absolute; top: 4px; left: 50%;
+    transform: translateX(-50%); background: linear-gradient(180deg, rgba(239,68,68,0.85), rgba(239,68,68,0.1));
+    pointer-events: none; z-index: 11;
+  }
+  .crosshair-h {
+    position: absolute; left: 4%; right: 4%; top: 50%; height: 1px;
+    background: rgba(239,68,68,0.22); pointer-events: none; z-index: 11;
+  }
+
+  #compass-svg {
+    width: 100%; height: 100%; overflow: visible;
+    filter: drop-shadow(0 8px 26px rgba(0,0,0,0.65));
+  }
+  /* 锁死 SVG 原点为 0 0，防止与 rotate(deg 500 500) 叠加漂移 */
+  #wheel-group {
+    transform-origin: 0 0;
+  }
+  .palace-hit { cursor: pointer; transition: opacity .15s; }
+  .palace-hit:hover { opacity: 0.88; }
+
+  /* 底部工具坞 */
+  .bottom-dock {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    padding: 6px 10px calc(env(safe-area-inset-bottom, 8px) + 8px);
+    background: linear-gradient(0deg, rgba(7,11,20,0.96) 0%, rgba(7,11,20,0.84) 75%, transparent 100%);
+  }
+  .ring-toggles {
+    display: flex; gap: 5px; overflow-x: auto; padding-bottom: 6px;
+    scrollbar-width: none;
+  }
+  .ring-toggles::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; background: var(--panel); border: 1px solid rgba(255,255,255,0.16);
+    color: var(--muted); border-radius: 999px; padding: 4px 9px; font-size: 11px;
+    cursor: pointer; font-weight: 600; backdrop-filter: blur(8px);
+  }
+  .chip.on {
+    border-color: var(--gold); color: var(--gold);
+    background: rgba(226, 190, 103, 0.16);
+  }
+
+  .sim-bar {
+    display: none; align-items: center; gap: 8px; margin-bottom: 6px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px 10px; font-size: 11px; color: var(--gold);
+  }
+  .sim-bar.show { display: flex; }
+  .sim-bar input[type=range] { flex: 1; accent-color: var(--gold); }
+
+  .time-row { display: flex; gap: 5px; margin-bottom: 6px; }
+  .time-row button {
+    flex: 1; background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
+    color: var(--text); border-radius: 8px; padding: 5px 4px; font-size: 11px;
+    cursor: pointer; font-weight: 600;
+  }
+  .time-row button.now-btn { color: var(--gold); border-color: var(--border); }
+
+  .action-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .dock-btn {
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
+    color: var(--text); border-radius: 10px; padding: 7px 4px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    backdrop-filter: blur(8px);
+  }
+  .dock-btn.primary {
+    background: linear-gradient(135deg, #c4a352, #e2be67);
+    color: #0b111e; border-color: #e2be67;
+  }
+  .dock-btn.active { border-color: var(--l4); color: var(--l4); }
+  .dock-btn span.ico { font-size: 14px; line-height: 1; }
+
+  /* 通用抽屉弹窗 */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.62);
+    display: none; align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-backdrop.open { display: flex; }
+  .sheet {
+    width: 100%; max-width: 520px; max-height: 84vh;
+    background: var(--panel-solid); border: 1px solid var(--border);
+    border-bottom: none; border-radius: 18px 18px 0 0;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 -10px 35px rgba(0,0,0,0.6);
+  }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 16px; border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .sheet-head h3 { margin: 0; font-size: 15px; color: var(--gold); }
+  .sheet-close {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.06); color: #fff; cursor: pointer; font-size: 14px;
+  }
+  .sheet-body {
+    padding: 12px 16px 26px; overflow-y: auto; font-size: 13px; line-height: 1.6;
+  }
+  .tab-bar { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tab-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.04); color: var(--muted); font-weight: 700; font-size: 12px; cursor: pointer;
+  }
+  .tab-btn.active { background: var(--gold); color: #0b111e; border-color: var(--gold); }
+
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .fchip {
+    padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.04); color: var(--muted);
+  }
+  .fchip.active { border-color: var(--gold); color: var(--gold); background: rgba(226,190,103,0.16); }
+
+  .card {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .card.good { border-color: rgba(16,185,129,0.5); background: rgba(16,185,129,0.08); }
+  .card.warn { border-color: rgba(245,158,11,0.45); background: rgba(245,158,11,0.07); }
+  .card.bad { border-color: rgba(239,68,68,0.45); background: rgba(239,68,68,0.07); }
+  .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 4px; gap: 6px; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .pill {
+    font-size: 11px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(255,255,255,0.08); color: #e5e7eb;
+  }
+  .pill.g { background: rgba(16,185,129,0.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); }
+  .pill.b { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+  .pill.y { background: rgba(226,190,103,0.2); color: #fde68a; border: 1px solid rgba(226,190,103,0.45); }
+
+  .color-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.55); vertical-align: middle; margin-right: 4px;
+  }
+  .mini-beh {
+    margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.12);
+    font-size: 11.5px; color: #cbd5e1;
+  }
+
+  .form-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+  .form-row label { font-size: 12px; color: var(--muted); min-width: 58px; }
+  .form-row select, .form-row input {
+    flex: 1; background: #141d31; color: #fff; border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px;
+  }
+  .btn-full {
+    width: 100%; padding: 10px; border-radius: 10px; border: none;
+    background: linear-gradient(135deg, #c4a352, #e2be67); color: #0b111e;
+    font-weight: 800; font-size: 13px; cursor: pointer;
+  }
+
+  /* 传感器诊断与磁偏校准抽屉 */
+  .diag-backdrop {
+    position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.68);
+    display: none; align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(5px);
+  }
+  .diag-backdrop.open { display: flex; }
+  .diag-sheet {
+    width: 100%; max-width: 520px; max-height: 86vh; overflow-y: auto;
+    background: #0d131f; border: 1px solid var(--border); border-bottom: none;
+    border-radius: 18px 18px 0 0; padding: 16px 16px 24px;
+    box-shadow: 0 -10px 35px rgba(0,0,0,0.7);
+  }
+  .diag-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .diag-head h3 { margin: 0; font-size: 16px; color: var(--gold); font-weight: 700; }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .diag-box {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .diag-box .k { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .diag-box .v { font-size: 16px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .diag-slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: #d1d5db; margin-bottom: 6px;
+  }
+  .diag-slider-row .val { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+  #diag-dec-slider { width: 100%; accent-color: var(--gold); margin-bottom: 14px; }
+  .diag-sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .diag-ch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .diag-ch-btn {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.14);
+    color: #e5e7eb; border-radius: 9px; padding: 10px 8px;
+    font-size: 12px; font-weight: 600; cursor: pointer; text-align: center;
+  }
+  .diag-ch-btn.full { grid-column: 1 / -1; }
+  .diag-ch-btn.active {
+    background: rgba(16, 185, 129, 0.22); border-color: #10b981; color: #6ee7b7;
+  }
+  .diag-waterfall-btn {
+    width: 100%; padding: 11px; border-radius: 10px; cursor: pointer;
+    background: rgba(226, 190, 103, 0.14); border: 1px solid var(--gold);
+    color: var(--gold); font-size: 13px; font-weight: 700; margin-bottom: 12px;
+  }
+  .diag-foot { font-size: 11px; color: var(--muted); line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<video id="camera-video" autoplay playsinline muted></video>
+<div id="bg-grid"></div>
+
+<!-- 顶部 HUD -->
+<div class="top-hud">
+  <div class="hud-header">
+    <div class="hud-left-group">
+      <div class="brand-pill">🧭 奇门出行诀</div>
+      <button class="diag-trigger" type="button" onclick="openDiagModal()">⚙️ 诊断校准</button>
+    </div>
+    <div class="method-seg" id="method-seg">
+      <button type="button" data-m="ChaiBu" class="active">拆补</button>
+      <button type="button" data-m="ZhiRun">置闰</button>
+      <button type="button" data-m="YinPan">阴盘</button>
+    </div>
+  </div>
+
+  <div class="meta-bar" id="meta-bar">
+    <span>正在初始化历法引擎...</span>
+  </div>
+
+  <div class="heading-card" id="heading-card" onclick="openCurrentPalaceDetail()">
+    <div class="heading-left">
+      <span class="heading-deg" id="hud-deg">000.0°</span>
+      <div>
+        <div class="heading-dir" id="hud-dir">正北 · 坎1宫</div>
+        <div style="font-size:11px;color:var(--muted)" id="hud-sub">子山 · 子宫</div>
+      </div>
+    </div>
+    <div class="heading-right" id="hud-eval">
+      <div>等待排盘...</div>
+    </div>
+  </div>
+
+  <div class="crack-warn" id="crack-warn">⚠️ 当前接近八卦界线（大空亡缝），出行建议微调避开</div>
+  <div class="https-banner" id="https-banner">⚠️ 非 HTTPS 环境，浏览器可能限制相机或磁感罗盘，已自动开放手动模拟</div>
+</div>
+
+<!-- 中央 5-Ring 罗盘 -->
+<div class="compass-stage" id="compass-stage">
+  <div class="compass-shell" id="compass-shell">
+    <div class="lubber-line"><div class="lubber-tri"></div></div>
+    <div class="lubber-stem"></div>
+    <div class="crosshair-h"></div>
+    <svg id="compass-svg" viewBox="0 0 1000 1000">
+      <defs>
+        <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#1e293b" stop-opacity="0.92"/>
+          <stop offset="100%" stop-color="#090f1d" stop-opacity="0.96"/>
+        </radialGradient>
+      </defs>
+      <g id="wheel-group">
+        <g id="ring5-24shan"></g>
+        <g id="ring4-12zhi"></g>
+        <g id="ring3-geju"></g>
+        <g id="ring2-chuxing"></g>
+        <g id="ring1-qimen"></g>
+      </g>
+      <!-- 中宫独立于旋转组之外，保持局数正立清晰 -->
+      <g id="center-hub"></g>
+    </svg>
+  </div>
+</div>
+
+<!-- 底部控制坞 -->
+<div class="bottom-dock">
+  <div class="sim-bar" id="sim-bar">
+    <span>手动旋转</span>
+    <input type="range" id="sim-slider" min="0" max="359.5" step="0.5" value="0">
+    <span id="sim-val">0°</span>
+  </div>
+
+  <div class="ring-toggles" id="ring-toggles">
+    <button type="button" class="chip on" data-ring="ring1">R1 奇门盘</button>
+    <button type="button" class="chip on" data-ring="ring2">R2 出行评级</button>
+    <button type="button" class="chip on" data-ring="ring3">R3 格局/行动</button>
+    <button type="button" class="chip on" data-ring="ring4">R4 12地支</button>
+    <button type="button" class="chip on" data-ring="ring5">R5 24山</button>
+    <button type="button" class="chip" id="btn-label-mode" onclick="toggleLabelMode()">模式: 传统格局</button>
+    <button type="button" class="chip" id="btn-tilt" onclick="toggleTilt3D()">3D 倾角</button>
+  </div>
+
+  <div class="time-row">
+    <button type="button" onclick="stepHour(-2)">◀ 上时辰</button>
+    <button type="button" class="now-btn" onclick="resetToNow()">⚡ 当下</button>
+    <button type="button" onclick="stepHour(2)">下时辰 ▶</button>
+    <button type="button" onclick="openTimeModal()">📅 自选时间</button>
+  </div>
+
+  <div class="action-row">
+    <button type="button" class="dock-btn" id="btn-camera" onclick="toggleCamera()">
+      <span class="ico">📷</span><span>AR相机</span>
+    </button>
+    <button type="button" class="dock-btn" id="btn-sensor" onclick="toggleSensorMode()">
+      <span class="ico">🧲</span><span id="sensor-lbl">手动中</span>
+    </button>
+    <button type="button" class="dock-btn primary" onclick="openChuXingModal()">
+      <span class="ico">🧭</span><span>出行诀</span>
+    </button>
+    <button type="button" class="dock-btn" onclick="openSummaryModal()">
+      <span class="ico">🌟</span><span>吉格/三胜</span>
+    </button>
+    <button type="button" class="dock-btn" onclick="openCurrentPalaceDetail()">
+      <span class="ico">📖</span><span>本宫详批</span>
+    </button>
+  </div>
+</div>
+
+<!-- 通用底部抽屉 -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="if(event.target===this)closeModal()">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3 id="modal-title">详情</h3>
+      <button type="button" class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="sheet-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- 传感器诊断与磁偏校准抽屉 -->
+<div class="diag-backdrop" id="diag-backdrop" onclick="if(event.target===this)closeDiagModal()">
+  <div class="diag-sheet">
+    <div class="diag-head">
+      <h3>传感器诊断与磁偏校准</h3>
+      <button type="button" class="sheet-close" onclick="closeDiagModal()">✕</button>
+    </div>
+
+    <div class="diag-grid">
+      <div class="diag-box">
+        <div class="k">当前活跃通道</div>
+        <div class="v" id="diag-channel">simulation</div>
+      </div>
+      <div class="diag-box">
+        <div class="k">采样频率 (Hz)</div>
+        <div class="v" id="diag-hz">0.0 Hz</div>
+      </div>
+      <div class="diag-box">
+        <div class="k">倾角矩阵 R22</div>
+        <div class="v" id="diag-r22">1.000</div>
+      </div>
+      <div class="diag-box">
+        <div class="k">原始角 / 补偿角</div>
+        <div class="v" id="diag-angles">0.0° / 0.0°</div>
+      </div>
+    </div>
+
+    <div class="diag-slider-row">
+      <span>磁偏角人工微调 (-30° ~ +30°)</span>
+      <span class="val" id="diag-dec-val">+0.0°</span>
+    </div>
+    <input type="range" id="diag-dec-slider" min="-30" max="30" step="0.5" value="0">
+
+    <div class="diag-sub">强制测试通道（严格单源互斥切换）</div>
+    <div class="diag-ch-grid" id="diag-ch-grid">
+      <button type="button" class="diag-ch-btn" data-ch="absSensor" onclick="forceSensorChannel('absSensor')">1. AbsoluteOrientation</button>
+      <button type="button" class="diag-ch-btn" data-ch="orientationabsolute" onclick="forceSensorChannel('orientationabsolute')">2. orientationabsolute</button>
+      <button type="button" class="diag-ch-btn" data-ch="deviceorientation" onclick="forceSensorChannel('deviceorientation')">3. deviceorientation</button>
+      <button type="button" class="diag-ch-btn" data-ch="webkitCompass" onclick="forceSensorChannel('webkitCompass')">4. webkitCompass</button>
+      <button type="button" class="diag-ch-btn full active" data-ch="simulation" onclick="forceSensorChannel('simulation')">5. 手动模拟模式 (Simulation)</button>
+    </div>
+
+    <button type="button" class="diag-waterfall-btn" onclick="runAutoWaterfall()">↺ 重新运行自动瀑布流检测</button>
+    <div class="diag-foot" id="diag-foot"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+ * 一、空间几何字典（严格对齐 12地支 30° 表 与 24山 15° 表）
+ * ============================================================================ */
+const PALACE_META = {
+  1: { num:1, gua:'坎', dir:'正北', center:0,   elem:'水', zhi:['子'],     shan:['壬','子','癸'], star:'天蓬', door:'休门' },
+  8: { num:8, gua:'艮', dir:'东北', center:45,  elem:'土', zhi:['丑','寅'], shan:['丑','艮','寅'], star:'天任', door:'生门' },
+  3: { num:3, gua:'震', dir:'正东', center:90,  elem:'木', zhi:['卯'],     shan:['甲','卯','乙'], star:'天冲', door:'伤门' },
+  4: { num:4, gua:'巽', dir:'东南', center:135, elem:'木', zhi:['辰','巳'], shan:['辰','巽','巳'], star:'天辅', door:'杜门' },
+  9: { num:9, gua:'离', dir:'正南', center:180, elem:'火', zhi:['午'],     shan:['丙','午','丁'], star:'天英', door:'景门' },
+  2: { num:2, gua:'坤', dir:'西南', center:225, elem:'土', zhi:['未','申'], shan:['未','坤','申'], star:'天芮', door:'死门' },
+  7: { num:7, gua:'兑', dir:'正西', center:270, elem:'金', zhi:['酉'],     shan:['庚','酉','辛'], star:'天柱', door:'惊门' },
+  6: { num:6, gua:'乾', dir:'西北', center:315, elem:'金', zhi:['戌','亥'], shan:['戌','乾','亥'], star:'天心', door:'开门' },
+  5: { num:5, gua:'中', dir:'中央', center:null,elem:'土', zhi:[],         shan:[],               star:'天禽', door:'死门' }
+};
+const RING_ORDER = [1, 8, 3, 4, 9, 2, 7, 6];
+
+const ZHI_12 = [
+  { name:'子', center:0,   dir:'正北',   palace:1 },
+  { name:'丑', center:30,  dir:'北偏东', palace:8 },
+  { name:'寅', center:60,  dir:'东偏北', palace:8 },
+  { name:'卯', center:90,  dir:'正东',   palace:3 },
+  { name:'辰', center:120, dir:'东偏南', palace:4 },
+  { name:'巳', center:150, dir:'南偏东', palace:4 },
+  { name:'午', center:180, dir:'正南',   palace:9 },
+  { name:'未', center:210, dir:'南偏西', palace:2 },
+  { name:'申', center:240, dir:'西偏南', palace:2 },
+  { name:'酉', center:270, dir:'正西',   palace:7 },
+  { name:'戌', center:300, dir:'西偏北', palace:6 },
+  { name:'亥', center:330, dir:'北偏西', palace:6 }
+];
+
+const SHAN_24 = [
+  { name:'子', center:0,   palace:1, type:'zhi' },
+  { name:'癸', center:15,  palace:1, type:'gan' },
+  { name:'丑', center:30,  palace:8, type:'zhi' },
+  { name:'艮', center:45,  palace:8, type:'gua' },
+  { name:'寅', center:60,  palace:8, type:'zhi' },
+  { name:'甲', center:75,  palace:3, type:'gan' },
+  { name:'卯', center:90,  palace:3, type:'zhi' },
+  { name:'乙', center:105, palace:3, type:'gan' },
+  { name:'辰', center:120, palace:4, type:'zhi' },
+  { name:'巽', center:135, palace:4, type:'gua' },
+  { name:'巳', center:150, palace:4, type:'zhi' },
+  { name:'丙', center:165, palace:9, type:'gan' },
+  { name:'午', center:180, palace:9, type:'zhi' },
+  { name:'丁', center:195, palace:9, type:'gan' },
+  { name:'未', center:210, palace:2, type:'zhi' },
+  { name:'坤', center:225, palace:2, type:'gua' },
+  { name:'申', center:240, palace:2, type:'zhi' },
+  { name:'庚', center:255, palace:7, type:'gan' },
+  { name:'酉', center:270, palace:7, type:'zhi' },
+  { name:'辛', center:285, palace:7, type:'gan' },
+  { name:'戌', center:300, palace:6, type:'zhi' },
+  { name:'乾', center:315, palace:6, type:'gua' },
+  { name:'亥', center:330, palace:6, type:'zhi' },
+  { name:'壬', center:345, palace:1, type:'gan' }
+];
+const GUA_BOUNDARIES = [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5];
+
+/* ============================================================================
+ * 二、奇门核心辞典 & 融合版「人和·行为风水」辞典
+ * ============================================================================ */
+const JQ_ORDER = [
+  '冬至','小寒','大寒','立春','雨水','惊蛰','春分','清明','谷雨','立夏','小满','芒种',
+  '夏至','小暑','大暑','立秋','处暑','白露','秋分','寒露','霜降','立冬','小雪','大雪'
+];
+const JQ_TABLE = {
+  '冬至':{yang:true, ju:[1,7,4]}, '小寒':{yang:true, ju:[2,8,5]}, '大寒':{yang:true, ju:[3,9,6]},
+  '立春':{yang:true, ju:[8,5,2]}, '雨水':{yang:true, ju:[9,6,3]}, '惊蛰':{yang:true, ju:[1,7,4]},
+  '春分':{yang:true, ju:[3,9,6]}, '清明':{yang:true, ju:[4,1,7]}, '谷雨':{yang:true, ju:[5,2,8]},
+  '立夏':{yang:true, ju:[4,1,7]}, '小满':{yang:true, ju:[5,2,8]}, '芒种':{yang:true, ju:[6,3,9]},
+  '夏至':{yang:false,ju:[9,3,6]}, '小暑':{yang:false,ju:[8,2,5]}, '大暑':{yang:false,ju:[7,1,4]},
+  '立秋':{yang:false,ju:[2,5,8]}, '处暑':{yang:false,ju:[1,4,7]}, '白露':{yang:false,ju:[9,3,6]},
+  '秋分':{yang:false,ju:[7,1,4]}, '寒露':{yang:false,ju:[6,9,3]}, '霜降':{yang:false,ju:[5,8,2]},
+  '立冬':{yang:false,ju:[6,9,3]}, '小雪':{yang:false,ju:[5,8,2]}, '大雪':{yang:false,ju:[4,7,1]}
+};
+const STEM_SEQ = ['戊','己','庚','辛','壬','癸','丁','丙','乙'];
+const XUN_HEAD_STEM = { '甲子':'戊','甲戌':'己','甲申':'庚','甲午':'辛','甲辰':'壬','甲寅':'癸' };
+const GODS_FULL = ['值符','腾蛇','太阴','六合','白虎','玄武','九地','九天'];
+const GODS_SHORT = ['符','蛇','阴','合','虎','玄','地','天'];
+const OVERCOMES = { '甲':'戊','乙':'己','丙':'庚','丁':'辛','戊':'壬','己':'癸','庚':'甲','辛':'乙','壬':'丙','癸':'丁' };
+const PRODUCES = { '水':'木','木':'火','火':'土','土':'金','金':'水' };
+const ZHI_TO_PALACE = { '子':1,'丑':8,'寅':8,'卯':3,'辰':4,'巳':4,'午':9,'未':2,'申':2,'酉':7,'戌':6,'亥':6 };
+const MA_XING_ZHI = {
+  '申':'寅','子':'寅','辰':'寅',
+  '寅':'申','午':'申','戌':'申',
+  '巳':'亥','酉':'亥','丑':'亥',
+  '亥':'巳','卯':'巳','未':'巳'
+};
+const DOOR_ELEM = { '休门':'水','生门':'土','伤门':'木','杜门':'木','景门':'火','死门':'土','惊门':'金','开门':'金' };
+const ELEM_KE = { '水':'火','火':'金','金':'木','木':'土','土':'水' };
+const JIXING_MAP = { '戊':3, '己':2, '庚':8, '辛':9, '壬':4, '癸':4 };
+const RUME_MAP = { '乙':[6], '丙':[6], '戊':[6], '丁':[8], '己':[8], '庚':[8], '辛':[4], '壬':[4], '癸':[2] };
+
+// 融合传统与现代生活的「行为风水（人和）」字典
+const STEM_BEHAVIOR = {
+  '甲': {
+    colorName: '翠绿 / 森林绿', colorHex: '#10b981', shortColor: '绿色',
+    items: '精致腕表、龙/麒麟纹饰品、剪裁挺括外套、高质感工艺品',
+    actions: '穿着得体显贵气，整理仪容、挺直腰背，以从容自信的姿态启程'
+  },
+  '乙': {
+    colorName: '浅绿 / 碧绿 / 青玉', colorHex: '#6ee7b7', shortColor: '浅绿',
+    items: '小绿植/花草元素、茶叶、木质葫芦或精致挂件、轻便书册/画册',
+    actions: '出发前盘腿静坐或双手合十静心祈福，柔和舒展肩颈，佩戴项链/丝巾/领带'
+  },
+  '丙': {
+    colorName: '正红 / 绛紫色', colorHex: '#ef4444', shortColor: '红紫',
+    items: '太阳镜/眼镜、圆形随行杯、水晶球或亮面玻璃饰品、暖色挂饰',
+    actions: '迎向自然光或暖色灯光停留片刻，用圆杯喝口水、吃点圆形点心，起步微走弧线'
+  },
+  '丁': {
+    colorName: '玫红 / 粉红 / 珊瑚红', colorHex: '#f472b6', shortColor: '玫粉',
+    items: '香薰蜡烛/打火机、手机、证件钥匙、带吸管饮品、小束鲜花或精细首饰',
+    actions: '点暖灯或香薰片刻静心许愿，用吸管喝口饮品，戴耳机哼唱或听首轻快音乐再出门'
+  },
+  '戊': {
+    colorName: '明黄 / 琥珀黄', colorHex: '#eab308', shortColor: '明黄',
+    items: '陶瓷杯、方形钱包/卡包、硬币零钱、质感厚实靠垫或随身托特包',
+    actions: '出门前整理钱包数清零钱、手中轻握硬币或翻看两页书，吃份扎实肉食/包点再出发'
+  },
+  '己': {
+    colorName: '姜黄 / 咖啡棕', colorHex: '#b45309', shortColor: '咖黄',
+    items: '陶艺小物、便携收纳袋、手账信封、编织挂绳、折叠丝巾或折扇',
+    actions: '盘腿安坐缓口气、做几个手部舒展，将随身衣物与钱包整齐折叠归位后再动身'
+  },
+  '庚': {
+    colorName: '纯白 / 象牙白', colorHex: '#f8fafc', shortColor: '纯白',
+    items: '金属保温杯、白色水杯、车钥匙、原石或铜质小饰件',
+    actions: '双手交叠保持定力，可默念/抄写几句定心经文（如金刚经/静心句），写下核心目标后干脆直行'
+  },
+  '辛': {
+    colorName: '白色 / 银白 / 高级灰', colorHex: '#cbd5e1', shortColor: '银灰',
+    items: '水晶饰品、戒指/手链/珠串、细链手表、钥匙、金属币/五帝钱、小袋坚果',
+    actions: '轻摩随身饰品理清心愿（可静心读抄心经），尝一点微辛食物提神，主动微调突破现状'
+  },
+  '壬': {
+    colorName: '深蓝 / 墨青 / 黑色', colorHex: '#2563eb', shortColor: '深蓝',
+    items: '瓶装矿泉水、流动水元素/风景卡片、波浪纹理单品、轻盈防水外衣',
+    actions: '喝几口矿泉水或流动清水，在室内轻快走动两步、哼段小曲，沿途顺势灵活应变'
+  },
+  '癸': {
+    colorName: '炭黑 / 黛黑色', colorHex: '#475569', shortColor: '炭黑',
+    items: '温热茶饮/饮品、极度舒适的鞋履、护手霜或随身仪容小物',
+    actions: '缓慢品尝几口热茶或温粥，做好基础仪容整理，出发前来回缓步走两步再稳步前行'
+  }
+};
+
+const DOOR_INTENTS = {
+  '开门': {
+    title:'事业破局', short:'开·事业', good:true, tag:'career',
+    desc:'工作新机遇显现，利跨越瓶颈、开启新局与对外拓展。',
+    activities:['拜访重要人物','商务约会','上任履新','开业庆典','远行启程'],
+    benefits:['突破困难','开启新局','贵人相助'],
+    affirm:'事业畅通，步步生莲'
+  },
+  '休门': {
+    title:'贵人人际', short:'休·贵人', good:true, tag:'noble',
+    desc:'人际网络畅通温和，易获暗中支持、提携与关系修复。',
+    activities:['拜访贵人','恋爱约会','合作洽谈','化解纠纷','学习进修','休闲放松'],
+    benefits:['化解纷争','贵人提携','人际和谐'],
+    affirm:'贵人相助，万事和睦'
+  },
+  '生门': {
+    title:'财富显化', short:'生·求财', good:true, tag:'wealth',
+    desc:'生机与财气顺畅流转，利求财交易、商务谈判与健康调养。',
+    activities:['投资理财','商务谈判','催款收账','探病求医','休养生息','签约购置'],
+    benefits:['财源广进','生意兴隆','生机旺盛'],
+    affirm:'财气流转，生机勃勃'
+  },
+  '景门': {
+    title:'声名展示', short:'景·文书', good:'mid', tag:'exam',
+    desc:'才华与观点易被看见，利考试面试、演讲推广与文书签约；防急躁口舌。',
+    activities:['考试面试','求职竞选','演讲汇报','广告宣传','社交聚会','表白沟通'],
+    benefits:['获得关注','提升声望','展示才华'],
+    affirm:'才华绽放，声名远扬'
+  },
+  '伤门': {
+    title:'行动突破', short:'伤·竞逐', good:false, tag:'other',
+    desc:'仅宜竞技运动、讨债维权、挑战自我；常规出行易有磕碰损耗。',
+    activities:['户外运动','竞技比赛','索要债务','维权行动'],
+    benefits:['增强勇气','突破限制'],
+    affirm:'果断冷静，防损避冲'
+  },
+  '杜门': {
+    title:'隐秘谋划', short:'杜·藏匿', good:false, tag:'other',
+    desc:'宜深度学习、保密方案与独处沉淀；常规出行易遇拥堵阻滞。',
+    activities:['深度学习','秘密会议','策划方案','写作独处'],
+    benefits:['保护隐私','避免干扰'],
+    affirm:'静待时机，深谋远虑'
+  },
+  '死门': {
+    title:'断舍离', short:'死·忌行', good:false, tag:'other',
+    desc:'宜清理旧物、结束旧局与告别仪式；求财办事常规出行大忌。',
+    activities:['清理杂物','断舍离','结束旧事'],
+    benefits:['清理障碍','轻装上阵'],
+    affirm:'告别过往，按兵不动'
+  },
+  '惊门': {
+    title:'警觉防范', short:'惊·口舌', good:false, tag:'other',
+    desc:'宜风控排查、法务维权与辩论谈判；日常出行防惊恐争执。',
+    activities:['风险防范','安全检查','法律维权'],
+    benefits:['提前预警','保护安全'],
+    affirm:'保持警觉，化险为夷'
+  }
+};
+
+const GOD_DESC = {
+  '值符':'百恶消散，贵人提携，最利见高人、谈大局。',
+  '腾蛇':'多变虚惊，易生波折或直觉敏感，防信息失真。',
+  '太阴':'阴佑密谋，女性贵人，宜策划学习、暗中推进。',
+  '六合':'婚姻合作，中介成交，利签约谈判与人际撮合。',
+  '白虎':'刚猛阻滞，防交通磕碰、急躁冲突与突发压力。',
+  '玄武':'暧昧不明，防遗失财物、被误导或路线迷失。',
+  '九地':'稳固潜伏，利长远布局、屯财守成，忌急于求成。',
+  '九天':'高远扬名，利远行差旅、宣传扩张、主动出击。'
+};
+
+/* ============================================================================
+ * 三、纯原生时家奇门排盘引擎（依赖 lunar.js）
+ * ============================================================================ */
+const QimenEngine = {
+  calcZhiRunJu(solar) {
+    let baseSolar = solar;
+    if (solar.getHour() >= 23) baseSolar = solar.next(1);
+    const targetDay = Solar.fromYmd(baseSolar.getYear(), baseSolar.getMonth(), baseSolar.getDay());
+    const startYear = targetDay.getYear() - 2;
+
+    const termList = [];
+    for (let y = startYear; y <= targetDay.getYear() + 1; y++) {
+      const ly = LunarYear.fromYear(y);
+      const jds = ly.getJieQiJulianDays();
+      for (let i = 1; i <= 24; i++) {
+        const s = Solar.fromJulianDay(jds[i]);
+        termList.push({
+          name: JQ_ORDER[i - 1],
+          idx: i - 1,
+          solar: Solar.fromYmd(s.getYear(), s.getMonth(), s.getDay())
+        });
+      }
+    }
+
+    const dz0 = termList[0].solar;
+    let cycleStart = null;
+    for (let d = -8; d <= 6; d++) {
+      const cand = dz0.next(d);
+      const gz = cand.getLunar().getDayInGanZhi();
+      if (LunarUtil.getJiaZiIndex(gz) % 15 === 0) { cycleStart = cand; break; }
+    }
+    if (!cycleStart) cycleStart = dz0;
+
+    let tIdx = 0, isLeapCycle = false, safety = 0;
+    while (safety++ < 150) {
+      const nextCycleStart = cycleStart.next(15);
+      if (targetDay.subtract(cycleStart) >= 0 && targetDay.subtract(nextCycleStart) < 0) {
+        const daysIn = targetDay.subtract(cycleStart);
+        const yuanIdx = Math.min(2, Math.floor(daysIn / 5));
+        const term = termList[tIdx];
+        const info = JQ_TABLE[term.name];
+        return {
+          jqName: term.name, isLeapTerm: isLeapCycle, yuanIdx,
+          yuanName: ['上元','中元','下元'][yuanIdx],
+          isYang: info.yang, juNumber: info.ju[yuanIdx],
+          note: isLeapCycle ? `置闰(${term.name}闰)` : '置闰法'
+        };
+      }
+      const curTerm = termList[tIdx], nextTerm = termList[tIdx + 1];
+      if (!nextTerm) break;
+      if (!isLeapCycle && (curTerm.name === '芒种' || curTerm.name === '大雪')) {
+        const chaoShenDays = nextTerm.solar.subtract(nextCycleStart);
+        if (chaoShenDays >= 9) {
+          isLeapCycle = true;
+          cycleStart = nextCycleStart;
+          continue;
+        }
+      }
+      isLeapCycle = false;
+      tIdx++;
+      cycleStart = nextCycleStart;
+    }
+    return this.calcChaiBuJu(solar);
+  },
+
+  calcChaiBuJu(solar) {
+    const lunar = solar.getLunar();
+    const prevJQ = lunar.getPrevJieQi(false);
+    const jqName = prevJQ.getName();
+    const dayGZ = lunar.getDayInGanZhiExact();
+    const dayIdx = LunarUtil.getJiaZiIndex(dayGZ);
+    const yuanIdx = Math.floor(dayIdx / 5) % 3;
+    const info = JQ_TABLE[jqName] || { yang: true, ju: [1,7,4] };
+    return {
+      jqName, isLeapTerm: false, yuanIdx,
+      yuanName: ['上元','中元','下元'][yuanIdx],
+      isYang: info.yang, juNumber: info.ju[yuanIdx], note: '拆补法'
+    };
+  },
+
+  calcYinPanJu(solar) {
+    const lunar = solar.getLunar();
+    const prevJQ = lunar.getPrevJieQi(false);
+    const jqName = prevJQ.getName();
+    const info = JQ_TABLE[jqName] || { yang: true };
+    const yZhiIdx = lunar.getYearZhiIndexExact() + 1;
+    const lMonth = Math.abs(lunar.getMonth());
+    const lDay = lunar.getDay();
+    const hZhiIdx = lunar.getTimeZhiIndex() + 1;
+    let ju = (yZhiIdx + lMonth + lDay + hZhiIdx) % 9;
+    if (ju === 0) ju = 9;
+    return {
+      jqName, isLeapTerm: false, yuanIdx: -1,
+      yuanName: '阴盘数', isYang: info.yang, juNumber: ju, note: '阴盘奇门'
+    };
+  },
+
+  generate(dateObj, method = 'ChaiBu', wuBuJiMode = 'zhishi') {
+    const solar = Solar.fromDate(dateObj);
+    const lunar = solar.getLunar();
+
+    const yGan = lunar.getYearGanExact(), yZhi = lunar.getYearZhiExact();
+    const mGan = lunar.getMonthGanExact(), mZhi = lunar.getMonthZhiExact();
+    const dGan = lunar.getDayGanExact(),   dZhi = lunar.getDayZhiExact();
+    const hGan = lunar.getTimeGan(),       hZhi = lunar.getTimeZhi();
+    const timeGZ = hGan + hZhi;
+
+    let juInfo;
+    if (method === 'ZhiRun') juInfo = this.calcZhiRunJu(solar);
+    else if (method === 'YinPan') juInfo = this.calcYinPanJu(solar);
+    else juInfo = this.calcChaiBuJu(solar);
+
+    const { isYang, juNumber } = juInfo;
+
+    const earthStem = {};
+    for (let i = 0; i < 9; i++) {
+      const p = isYang
+        ? ((juNumber - 1 + i) % 9) + 1
+        : ((juNumber - 1 - i + 90) % 9) + 1;
+      earthStem[p] = STEM_SEQ[i];
+    }
+
+    const xunHeadGZ = LunarUtil.getXun(timeGZ);
+    const xunShouStem = XUN_HEAD_STEM[xunHeadGZ];
+    const xunKongStr = LunarUtil.getXunKong(timeGZ);
+    const xunKongZhis = [xunKongStr[0], xunKongStr[1]];
+    const xunKongPalaces = [...new Set(xunKongZhis.map(z => ZHI_TO_PALACE[z]))];
+
+    const maZhi = MA_XING_ZHI[hZhi];
+    const maPalace = ZHI_TO_PALACE[maZhi];
+
+    let xunPalace = 1;
+    for (let p = 1; p <= 9; p++) {
+      if (earthStem[p] === xunShouStem) { xunPalace = p; break; }
+    }
+
+    const zhiFuStar = PALACE_META[xunPalace].star;
+    const zhiShiDoor = PALACE_META[xunPalace].door;
+
+    const targetTimeStem = (hGan === '甲') ? xunShouStem : hGan;
+    let zfTargetPalace = 1;
+    for (let p = 1; p <= 9; p++) {
+      if (earthStem[p] === targetTimeStem) { zfTargetPalace = p; break; }
+    }
+    if (zfTargetPalace === 5) zfTargetPalace = 2;
+
+    const zfOrigRingPalace = (xunPalace === 5) ? 2 : xunPalace;
+    const zfOrigIdx = RING_ORDER.indexOf(zfOrigRingPalace);
+    const zfDstIdx = RING_ORDER.indexOf(zfTargetPalace);
+
+    const palaces = {};
+    RING_ORDER.forEach(p => {
+      palaces[p] = {
+        ...PALACE_META[p],
+        earthStem: earthStem[p],
+        earthJiStem: p === 2 ? earthStem[5] : '',
+        heavenStem: '', heavenJiStem: '', star: '', hasQin: false,
+        door: '', god: '', godShort: '',
+        marks: [], goodForms: [], badForms: [],
+        isKong: xunKongPalaces.includes(p), isMa: maPalace === p,
+        isSanSheng: false, isWuBuJi: false, eval: null
+      };
+    });
+
+    for (let i = 0; i < 8; i++) {
+      const srcP = RING_ORDER[(zfOrigIdx + i) % 8];
+      const dstP = RING_ORDER[(zfDstIdx + i) % 8];
+      palaces[dstP].star = PALACE_META[srcP].star;
+      palaces[dstP].heavenStem = earthStem[srcP];
+      if (srcP === 2) {
+        palaces[dstP].heavenJiStem = earthStem[5];
+        palaces[dstP].hasQin = true;
+      }
+    }
+
+    const steps = (LunarUtil.getJiaZiIndex(timeGZ) - LunarUtil.getJiaZiIndex(xunHeadGZ) + 60) % 60;
+    let zsTargetPalace = isYang
+      ? ((xunPalace - 1 + steps) % 9) + 1
+      : ((xunPalace - 1 - steps + 90) % 9) + 1;
+    if (zsTargetPalace === 5) zsTargetPalace = 2;
+
+    const zsOrigIdx = RING_ORDER.indexOf(zfOrigRingPalace);
+    const zsDstIdx = RING_ORDER.indexOf(zsTargetPalace);
+    for (let i = 0; i < 8; i++) {
+      const srcP = RING_ORDER[(zsOrigIdx + i) % 8];
+      const dstP = RING_ORDER[(zsDstIdx + i) % 8];
+      palaces[dstP].door = PALACE_META[srcP].door;
+    }
+
+    for (let i = 0; i < 8; i++) {
+      const dstP = isYang
+        ? RING_ORDER[(zfDstIdx + i) % 8]
+        : RING_ORDER[(zfDstIdx - i + 8) % 8];
+      palaces[dstP].god = GODS_FULL[i];
+      palaces[dstP].godShort = GODS_SHORT[i];
+    }
+
+    let dayPalace = 2, hourPalace = zfTargetPalace, jiuTianPalace = 2, jiuDiPalace = 2, shengPalace = 2, dingPalace = 2;
+    const dayTargetStem = (dGan === '甲') ? XUN_HEAD_STEM[LunarUtil.getXun(dGan + dZhi)] : dGan;
+    RING_ORDER.forEach(p => {
+      const pd = palaces[p];
+      if (pd.heavenStem === dayTargetStem || pd.heavenJiStem === dayTargetStem) dayPalace = p;
+      if (pd.god === '九天') jiuTianPalace = p;
+      if (pd.god === '九地') jiuDiPalace = p;
+      if (pd.door === '生门') shengPalace = p;
+      if (pd.heavenStem === '丁' || pd.heavenJiStem === '丁') dingPalace = p;
+    });
+
+    const sanShengSet = new Set([zfTargetPalace, jiuTianPalace, shengPalace]);
+    const wuBuJiExtra = (wuBuJiMode === 'dingqi') ? dingPalace : zsTargetPalace;
+    const wuBuJiSet = new Set([...sanShengSet, jiuDiPalace, wuBuJiExtra]);
+
+    const wuBuYuShi = (OVERCOMES[hGan] === dGan);
+    const globalAuspicious = [];
+
+    RING_ORDER.forEach(p => {
+      const pd = palaces[p];
+      pd.isSanSheng = sanShengSet.has(p);
+      pd.isWuBuJi = wuBuJiSet.has(p);
+
+      if (ELEM_KE[DOOR_ELEM[pd.door]] === pd.elem) pd.marks.push('迫');
+      if (JIXING_MAP[pd.heavenStem] === p || (pd.heavenJiStem && JIXING_MAP[pd.heavenJiStem] === p)) pd.marks.push('刑');
+      if ((RUME_MAP[pd.heavenStem] && RUME_MAP[pd.heavenStem].includes(p)) ||
+          (pd.heavenJiStem && RUME_MAP[pd.heavenJiStem] && RUME_MAP[pd.heavenJiStem].includes(p))) pd.marks.push('墓');
+      if (pd.isKong) pd.marks.push('空');
+
+      const hS = pd.heavenStem, eS = pd.earthStem, door = pd.door, godS = pd.godShort;
+
+      const bad = [];
+      if (hS === '乙' && eS === '辛') bad.push('青龙逃走');
+      if (hS === '辛' && eS === '乙') bad.push('白虎猖狂');
+      if (hS === '癸' && eS === '丁') bad.push('腾蛇妖矫');
+      if (hS === '丁' && eS === '癸') bad.push('朱雀投江');
+      if (hS === '癸' && eS === hGan) bad.push('天罗');
+      if (hS === '壬' && eS === hGan) bad.push('地网');
+      if (hS === '庚' && eS === '丙') bad.push('太白入荧');
+      if (hS === '丙' && eS === '庚') bad.push('荧入太白');
+      if (hS === '丙' && [yGan,mGan,dGan,hGan].includes(eS)) bad.push('悖格');
+      if (hS === '庚' && eS === '癸') bad.push('大格');
+      if (hS === '庚' && eS === '己') bad.push('刑格');
+      if (hS === '庚' && eS === '壬') bad.push('上格');
+      if (hS === '庚' && [yGan,mGan,dGan,hGan].includes(eS)) bad.push('庚临四柱');
+      if (hS === eS) bad.push('干伏吟');
+      if ((hS==='丙'&&eS==='壬')||(hS==='壬'&&eS==='丙')) bad.push('火入天罗');
+      pd.badForms = [...new Set(bad)];
+
+      const good = [];
+      if (hS === '戊' && eS === '丙') good.push('青龙返首');
+      if (hS === '丙' && eS === '戊') good.push('飞鸟跌穴');
+      if (godS === '符' && ['乙','丙','丁'].includes(eS)) good.push('相佐');
+      if ((p === zsTargetPalace || door === zhiShiDoor) && (eS === '丁' || hS === '丁')) good.push('玉女守门');
+      if (hS === '丙' && eS === '丁' && ['开门','休门','生门'].includes(door)) good.push('天遁');
+      if (hS === '乙' && eS === '己' && ['开门','生门'].includes(door)) good.push('地遁');
+      if (hS === '丁' && door === '休门' && godS === '阴') good.push('人遁');
+      if (hS === '丙' && door === '生门' && godS === '天') good.push('神遁');
+      if (hS === '丁' && door === '杜门' && godS === '地') good.push('鬼遁');
+      if (['乙','丙','丁'].includes(hS) && ['开门','休门','生门'].includes(door) && p === 4) good.push('风遁');
+      if (hS === '乙' && ['开门','休门','生门'].includes(door) && eS === '辛') good.push('云遁');
+      if (hS === '乙' && ['开门','休门','生门'].includes(door) && p === 1) good.push('龙遁');
+      if (hS === '乙' && door === '开门' && eS === '辛' && p === 8) good.push('虎遁');
+      if (['乙','丙','丁'].includes(hS) && ['己','庚','辛','壬','癸'].includes(eS) && p === zsTargetPalace) good.push('三奇得使');
+      if ((hS==='乙'&&p===3)||(hS==='丙'&&p===9)||(hS==='丁'&&p===7)) good.push('三奇升殿');
+      if (['乙','丙','丁'].includes(hS) && ['开门','休门','生门'].includes(door) && ['阴','合','地'].includes(godS)) good.push('三诈');
+      if (hS === '丙' && eS === '乙') good.push('日月并行');
+      if (hS === '乙' && eS === '丙') good.push('奇仪顺遂');
+      if (hS === '乙' && eS === '丁') good.push('奇仪相佐');
+      if (hS === '丁' && eS === '乙') good.push('玉女奇生');
+      if (hS === '戊' && eS === '丁') good.push('青龙耀明');
+      if (hS === '丁' && eS === '戊') good.push('青龙转光');
+      if (hS === '丙' && eS === '辛') good.push('日月相会');
+      if (hS === '壬' && eS === '戊') good.push('小蛇化龙');
+      pd.goodForms = [...new Set(good)];
+
+      pd.goodForms.forEach(g => globalAuspicious.push({ name: g, palace: p, dir: pd.dir, gua: pd.gua, door: pd.door }));
+
+      const isGoodDoor = ['开门','休门','生门'].includes(door);
+      const isJingDoor = (door === '景门');
+      const hasDefect = pd.marks.length > 0 || pd.badForms.length > 0;
+      const reasons = [];
+
+      if (isGoodDoor && !hasDefect) {
+        let lvl = 1;
+        reasons.push(`纯净吉门(${door})`);
+        if (['乙','丙','丁'].includes(hS)) { lvl = 2; reasons.push(`得三奇(${hS})`); }
+        let hasL3 = false;
+        if (['符','阴','地','天'].includes(godS)) { hasL3 = true; reasons.push(`吉神(${pd.god})`); }
+        if (pd.goodForms.length > 0) { hasL3 = true; reasons.push(`吉格(${pd.goodForms.slice(0,2).join('、')})`); }
+        if (hasL3) lvl = 3;
+
+        const elemA = pd.elem, elemDay = PALACE_META[dayPalace].elem;
+        const elemHr = PALACE_META[hourPalace].elem;
+        const prodOrSame = (a, b) => a === b || PRODUCES[a] === b;
+        if (prodOrSame(elemA, elemDay) || prodOrSame(elemHr, elemDay)) {
+          lvl = 4;
+          reasons.push('宫/时生助日干');
+        }
+        const names = {1:'L1 净界', 2:'L2 奇域', 3:'L3 神庇', 4:'L4 聚气'};
+        const colors = {1:'#84cc16', 2:'#60a5fa', 3:'#22d3ee', 4:'#10b981'};
+        pd.eval = { tier: lvl, label: names[lvl], short: `L${lvl}`, color: colors[lvl], status:'good', reasons };
+      } else if ((isGoodDoor || isJingDoor) && !pd.badForms.length && pd.marks.length <= 1) {
+        if (isJingDoor) reasons.push('景门(利文书展示)');
+        else reasons.push(`${door}带瑕疵`);
+        if (pd.marks.length) reasons.push(`注意:${pd.marks.join('/')}`);
+        if (pd.goodForms.length) reasons.push(`吉格(${pd.goodForms[0]})`);
+        pd.eval = { tier: 0.5, label: isJingDoor ? '景门·平吉' : '吉门带瑕', short: isJingDoor ? '景平' : '慎用', color: '#f59e0b', status:'warn', reasons };
+      } else {
+        if (!isGoodDoor && !isJingDoor) reasons.push(`凶/阻门(${door})`);
+        if (pd.marks.length) reasons.push(`状态:${pd.marks.join('/')}`);
+        if (pd.badForms.length) reasons.push(`凶格:${pd.badForms.slice(0,2).join('、')}`);
+        pd.eval = { tier: 0, label: '避忌方位', short: '避忌', color: '#ef4444', status:'bad', reasons };
+      }
+    });
+
+    const ranking = RING_ORDER.map(p => palaces[p]).sort((a, b) => {
+      if (b.eval.tier !== a.eval.tier) return b.eval.tier - a.eval.tier;
+      return b.eval.reasons.length - a.eval.reasons.length;
+    });
+
+    return {
+      dateObj: new Date(dateObj.getTime()), method, wuBuJiMode,
+      bazi: { y: yGan+yZhi, m: mGan+mZhi, d: dGan+dZhi, h: hGan+hZhi, yGan, mGan, dGan, hGan, hZhi },
+      juInfo, xunHeadGZ, xunShouStem, xunKongStr, xunKongZhis,
+      maZhi, maPalace, zhiFuStar, zhiFuPalace: zfTargetPalace,
+      zhiShiDoor, zhiShiPalace: zsTargetPalace, wuBuYuShi,
+      earthCenterStem: earthStem[5], palaces, ranking, globalAuspicious
+    };
+  }
+};
+
+/* ============================================================================
+ * 四、应用状态 & 3D 传感器诊断/磁偏校准引擎（严格单源互斥 + 瀑布流）
+ * ============================================================================ */
+const state = {
+  date: new Date(),
+  method: 'ChaiBu',
+  wuBuJiMode: 'zhishi',
+  labelMode: 'geju',
+  tilt3D: false,
+  rings: { ring1:true, ring2:true, ring3:true, ring4:true, ring5:true },
+  heading: 0,
+  targetHeading: 0,
+  sensorActive: false,
+  cameraActive: false,
+  stream: null,
+  chart: null,
+  dragMoved: false
+};
+
+const sensorCtrl = {
+  absSensor: null,
+  fallbackTimer: null,
+  channel: 'simulation',
+  sinEma: null,
+  cosEma: null,
+  declination: parseFloat(localStorage.getItem('qm_declination') || '0') || 0,
+  rawDeg: 0,
+  compDeg: 0,
+  r22: 1.0,
+  hz: 0,
+  frameTimes: [],
+  lastDiagUi: 0
+};
+
+function normDeg(d) {
+  return ((d % 360) + 360) % 360;
+}
+
+function getDirLookup(deg) {
+  const d = normDeg(deg);
+  const pIdx = Math.floor(((d + 22.5) % 360) / 45);
+  const palaceNum = RING_ORDER[pIdx];
+  const zIdx = Math.floor(((d + 15) % 360) / 30);
+  const zhiObj = ZHI_12[zIdx];
+  const sIdx = Math.floor(((d + 7.5) % 360) / 15);
+  const shanObj = SHAN_24[sIdx];
+  const nearBoundary = GUA_BOUNDARIES.some(b => {
+    const diff = Math.abs(((d - b + 540) % 360) - 180);
+    return diff <= 1.5;
+  });
+  return { deg: d, palaceNum, zhiObj, shanObj, nearBoundary };
+}
+
+function resetSensorFilter() {
+  sensorCtrl.sinEma = null;
+  sensorCtrl.cosEma = null;
+  sensorCtrl.frameTimes = [];
+  sensorCtrl.hz = 0;
+}
+
+function updateDiagUI(force = false) {
+  const modal = document.getElementById('diag-backdrop');
+  if (!modal || !modal.classList.contains('open')) return;
+  const now = performance.now();
+  if (!force && now - sensorCtrl.lastDiagUi < 120) return;
+  sensorCtrl.lastDiagUi = now;
+
+  const cutoff = now - 1000;
+  while (sensorCtrl.frameTimes.length && sensorCtrl.frameTimes[0] < cutoff) {
+    sensorCtrl.frameTimes.shift();
+  }
+  sensorCtrl.hz = sensorCtrl.channel === 'simulation' ? 0 : sensorCtrl.frameTimes.length;
+
+  const chEl = document.getElementById('diag-channel');
+  const hzEl = document.getElementById('diag-hz');
+  const r22El = document.getElementById('diag-r22');
+  const angEl = document.getElementById('diag-angles');
+  const footEl = document.getElementById('diag-foot');
+
+  if (chEl) chEl.textContent = sensorCtrl.channel;
+  if (hzEl) hzEl.textContent = `${sensorCtrl.hz.toFixed(1)} Hz`;
+  if (r22El) r22El.textContent = sensorCtrl.r22.toFixed(3);
+  if (angEl) angEl.textContent = `${sensorCtrl.rawDeg.toFixed(1)}° / ${sensorCtrl.compDeg.toFixed(1)}°`;
+
+  document.querySelectorAll('#diag-ch-grid .diag-ch-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.ch === sensorCtrl.channel);
+  });
+
+  if (footEl) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const platStr = isIOS
+      ? 'iOS / Safari (webkitCompass 瀑布流)'
+      : 'Android / 桌面设备 (AbsoluteOrientationSensor 瀑布流)';
+    footEl.textContent =
+      `识别平台: ${platStr} | 安全上下文: ${isSecure ? 'HTTPS 安全' : '非 HTTPS 受限'} | 倾角补偿: 3D ENU 矩阵按 R22 在 +Y 与 -Z 间线性混合。`;
+  }
+}
+
+function openDiagModal() {
+  const modal = document.getElementById('diag-backdrop');
+  if (!modal) return;
+  const slider = document.getElementById('diag-dec-slider');
+  const valEl = document.getElementById('diag-dec-val');
+
+  if (slider && valEl) {
+    slider.value = sensorCtrl.declination;
+    valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
+
+    if (sensorCtrl.channel === 'simulation') {
+      const simSlider = document.getElementById('sim-slider');
+      const simBase = simSlider ? (parseFloat(simSlider.value) || 0) : normDeg(state.targetHeading - sensorCtrl.declination);
+      sensorCtrl.rawDeg = simBase;
+      sensorCtrl.compDeg = normDeg(simBase + sensorCtrl.declination);
+    }
+
+    slider.oninput = () => {
+      sensorCtrl.declination = parseFloat(slider.value);
+      localStorage.setItem('qm_declination', String(sensorCtrl.declination));
+      valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
+
+      if (sensorCtrl.sinEma !== null) {
+        const base = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+        sensorCtrl.compDeg = normDeg(base + sensorCtrl.declination);
+        state.targetHeading = sensorCtrl.compDeg;
+      } else if (sensorCtrl.channel === 'simulation') {
+        const simSlider = document.getElementById('sim-slider');
+        const simBase = simSlider ? (parseFloat(simSlider.value) || 0) : sensorCtrl.rawDeg;
+        sensorCtrl.rawDeg = simBase;
+        sensorCtrl.compDeg = normDeg(simBase + sensorCtrl.declination);
+        state.targetHeading = sensorCtrl.compDeg;
+      }
+      updateDiagUI(true);
+    };
+  }
+
+  modal.classList.add('open');
+  updateDiagUI(true);
+}
+
+function closeDiagModal() {
+  const modal = document.getElementById('diag-backdrop');
+  if (modal) modal.classList.remove('open');
+}
+
+function feedHeading(rawDeg, r22Val) {
+  if (!state.sensorActive || isNaN(rawDeg)) return;
+  const d = normDeg(rawDeg);
+  sensorCtrl.frameTimes.push(performance.now());
+  sensorCtrl.rawDeg = d;
+  if (typeof r22Val === 'number' && !isNaN(r22Val)) sensorCtrl.r22 = r22Val;
+
+  const rad = d * Math.PI / 180;
+  const s = Math.sin(rad), c = Math.cos(rad);
+
+  if (sensorCtrl.sinEma === null) {
+    sensorCtrl.sinEma = s;
+    sensorCtrl.cosEma = c;
+  } else {
+    const prev = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+    const jump = Math.abs(((d - prev + 540) % 360) - 180);
+    let alpha = 0.14;
+    if (jump < 1.2) alpha = 0.04;
+    else if (jump > 45) alpha = 0.07;
+    else if (jump > 10) alpha = 0.22;
+
+    sensorCtrl.sinEma = sensorCtrl.sinEma * (1 - alpha) + s * alpha;
+    sensorCtrl.cosEma = sensorCtrl.cosEma * (1 - alpha) + c * alpha;
+    const len = Math.hypot(sensorCtrl.sinEma, sensorCtrl.cosEma) || 1;
+    sensorCtrl.sinEma /= len;
+    sensorCtrl.cosEma /= len;
+  }
+
+  const filtered = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+  const compensated = normDeg(filtered + sensorCtrl.declination);
+  sensorCtrl.compDeg = compensated;
+
+  const outDiff = Math.abs(((compensated - state.targetHeading + 540) % 360) - 180);
+  if (outDiff >= 0.3) state.targetHeading = compensated;
+  updateDiagUI();
+}
+
+function blendENUHeading(topE, topN, camE, camN, r22) {
+  const t = Math.max(0, Math.min(1, r22));
+  const tLen = Math.hypot(topE, topN);
+  const cLen = Math.hypot(camE, camN);
+
+  let E = 0, N = 0;
+  if (tLen > 1e-4 && cLen > 1e-4) {
+    E = t * (topE / tLen) + (1 - t) * (camE / cLen);
+    N = t * (topN / tLen) + (1 - t) * (camN / cLen);
+  } else if (tLen > 1e-4) {
+    E = topE; N = topN;
+  } else {
+    E = camE; N = camN;
+  }
+  return { deg: normDeg(Math.atan2(E, N) * 180 / Math.PI), r22 };
+}
+
+function headingFromQuaternion(q) {
+  const [x, y, z, w] = q;
+  const topE = 2 * (x * y - z * w);
+  const topN = 1 - 2 * (x * x + z * z);
+  const camE = -2 * (x * z + y * w);
+  const camN = -2 * (y * z - x * w);
+  const r22 = 1 - 2 * (x * x + y * y);
+  return blendENUHeading(topE, topN, camE, camN, r22);
+}
+
+function headingFromEuler(alpha, beta, gamma) {
+  const r = Math.PI / 180;
+  const a = alpha * r, b = beta * r, g = gamma * r;
+  const cA = Math.cos(a), sA = Math.sin(a);
+  const cB = Math.cos(b), sB = Math.sin(b);
+  const cG = Math.cos(g), sG = Math.sin(g);
+  const topE = -sA * cB, topN = cA * cB;
+  const camE = -(cA * sG + sA * sB * cG);
+  const camN = -(sA * sG - cA * sB * cG);
+  const r22 = cB * cG;
+  return blendENUHeading(topE, topN, camE, camN, r22);
+}
+
+function onAbsEvent(e) {
+  if (!state.sensorActive || sensorCtrl.channel !== 'orientationabsolute') return;
+  if (e.alpha === null || e.beta === null || e.gamma === null) return;
+  const res = headingFromEuler(e.alpha, e.beta, e.gamma);
+  feedHeading(res.deg, res.r22);
+}
+
+function onDeviceEvent(e) {
+  if (!state.sensorActive) return;
+  if (sensorCtrl.channel === 'webkitCompass') {
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+      const r22 = (e.beta !== null && e.gamma !== null)
+        ? Math.cos(e.beta * Math.PI / 180) * Math.cos(e.gamma * Math.PI / 180)
+        : 1;
+      feedHeading(e.webkitCompassHeading, r22);
+    }
+    return;
+  }
+  if (sensorCtrl.channel === 'deviceorientation') {
+    if (e.alpha === null || e.beta === null || e.gamma === null) return;
+    const res = headingFromEuler(e.alpha, e.beta, e.gamma);
+    feedHeading(res.deg, res.r22);
+  }
+}
+
+function stopAllSensors() {
+  if (sensorCtrl.fallbackTimer) {
+    clearTimeout(sensorCtrl.fallbackTimer);
+    sensorCtrl.fallbackTimer = null;
+  }
+  if (sensorCtrl.absSensor) {
+    try { sensorCtrl.absSensor.stop(); } catch (_) {}
+    sensorCtrl.absSensor = null;
+  }
+  window.removeEventListener('deviceorientationabsolute', onAbsEvent, true);
+  window.removeEventListener('deviceorientation', onDeviceEvent, true);
+  resetSensorFilter();
+}
+
+function syncSensorDockUI() {
+  const btn = document.getElementById('btn-sensor');
+  const lbl = document.getElementById('sensor-lbl');
+  const simBar = document.getElementById('sim-bar');
+  const isSim = sensorCtrl.channel === 'simulation';
+  state.sensorActive = !isSim;
+  if (btn) btn.classList.toggle('active', !isSim);
+  if (simBar) simBar.classList.toggle('show', isSim);
+
+  const map = {
+    absSensor: '四元数',
+    orientationabsolute: 'ABS北',
+    deviceorientation: '相对角',
+    webkitCompass: 'iOS北',
+    simulation: '手动中'
+  };
+  if (lbl) lbl.textContent = map[sensorCtrl.channel] || '手动中';
+  updateDiagUI(true);
+}
+
+async function ensureIOSPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    const res = await DeviceOrientationEvent.requestPermission();
+    return res === 'granted';
+  }
+  return true;
+}
+
+async function forceSensorChannel(ch) {
+  stopAllSensors();
+  if (ch === 'simulation') {
+    sensorCtrl.channel = 'simulation';
+    syncSensorDockUI();
+    return;
+  }
+
+  try {
+    const ok = await ensureIOSPermission();
+    if (!ok) {
+      alert('未获得罗盘传感器权限，已切换回手动模拟模式。');
+      sensorCtrl.channel = 'simulation';
+      syncSensorDockUI();
+      return;
+    }
+
+    if (ch === 'absSensor') {
+      if (!('AbsoluteOrientationSensor' in window)) {
+        alert('当前浏览器不支持 AbsoluteOrientationSensor。');
+        sensorCtrl.channel = 'simulation';
+        syncSensorDockUI();
+        return;
+      }
+      sensorCtrl.channel = 'absSensor';
+      syncSensorDockUI();
+      const s = new AbsoluteOrientationSensor({ frequency: 30, referenceFrame: 'device' });
+      sensorCtrl.absSensor = s;
+      s.addEventListener('reading', () => {
+        if (sensorCtrl.channel !== 'absSensor' || !s.quaternion) return;
+        const res = headingFromQuaternion(s.quaternion);
+        feedHeading(res.deg, res.r22);
+      });
+      s.addEventListener('error', () => {
+        alert('AbsoluteOrientationSensor 启动失败，请尝试 2 号通道。');
+      });
+      s.start();
+      return;
+    }
+
+    if (ch === 'orientationabsolute') {
+      sensorCtrl.channel = 'orientationabsolute';
+      syncSensorDockUI();
+      window.addEventListener('deviceorientationabsolute', onAbsEvent, true);
+      return;
+    }
+
+    if (ch === 'deviceorientation' || ch === 'webkitCompass') {
+      sensorCtrl.channel = ch;
+      syncSensorDockUI();
+      window.addEventListener('deviceorientation', onDeviceEvent, true);
+      return;
+    }
+  } catch (err) {
+    sensorCtrl.channel = 'simulation';
+    syncSensorDockUI();
+  }
+}
+
+async function runAutoWaterfall() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    await forceSensorChannel('webkitCompass');
+    return;
+  }
+
+  const order = [];
+  if ('AbsoluteOrientationSensor' in window) order.push('absSensor');
+  order.push('orientationabsolute', 'deviceorientation', 'simulation');
+
+  let stepIdx = 0;
+  async function tryNext() {
+    const ch = order[stepIdx++];
+    await forceSensorChannel(ch);
+    if (ch === 'simulation') return;
+
+    sensorCtrl.fallbackTimer = setTimeout(() => {
+      if (sensorCtrl.channel === ch && sensorCtrl.frameTimes.length === 0) {
+        tryNext();
+      }
+    }, 850);
+  }
+  tryNext();
+}
+
+async function toggleSensorMode() {
+  if (sensorCtrl.channel !== 'simulation') {
+    await forceSensorChannel('simulation');
+  } else {
+    await runAutoWaterfall();
+  }
+}
+
+async function toggleCamera() {
+  const video = document.getElementById('camera-video');
+  const bgGrid = document.getElementById('bg-grid');
+  const btn = document.getElementById('btn-camera');
+
+  if (state.cameraActive) {
+    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+    state.stream = null;
+    state.cameraActive = false;
+    video.classList.remove('active');
+    bgGrid.classList.remove('ar-on');
+    btn.classList.remove('active');
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('当前浏览器或非 HTTPS 环境无法调用后置摄像头。');
+    return;
+  }
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    video.srcObject = state.stream;
+    await video.play();
+    state.cameraActive = true;
+    video.classList.add('active');
+    bgGrid.classList.add('ar-on');
+    btn.classList.add('active');
+    resetSensorFilter();
+  } catch (err) {
+    alert('无法启动摄像头（请确认已授权且为 HTTPS 链接）：' + err.message);
+  }
+}
+
+/* ============================================================================
+ * 五、SVG 5-Ring 罗盘高清渲染引擎
+ * ============================================================================ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}, text = null) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (text !== null) el.textContent = text;
+  return el;
+}
+function polar(cx, cy, r, deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function sectorPath(cx, cy, rIn, rOut, startDeg, endDeg) {
+  const p1 = polar(cx, cy, rOut, startDeg);
+  const p2 = polar(cx, cy, rOut, endDeg);
+  const p3 = polar(cx, cy, rIn, endDeg);
+  const p4 = polar(cx, cy, rIn, startDeg);
+  const large = (endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${rOut} ${rOut} 0 ${large} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)} A ${rIn} ${rIn} 0 ${large} 0 ${p4.x.toFixed(2)} ${p4.y.toFixed(2)} Z`;
+}
+function radialText(cx, cy, r, deg, text, attrs = {}) {
+  const pos = polar(cx, cy, r, deg);
+  return svgEl('text', {
+    x: pos.x.toFixed(2), y: pos.y.toFixed(2),
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+    transform: `rotate(${deg} ${pos.x.toFixed(2)} ${pos.y.toFixed(2)})`,
+    ...attrs
+  }, text);
+}
+
+function handlePalaceTap(pNum) {
+  if (state.dragMoved) return;
+  openPalaceDetail(pNum);
+}
+
+function renderCompassSVG() {
+  const chart = state.chart;
+  if (!chart) return;
+  const cx = 500, cy = 500;
+
+  // Ring 5: 24 山精密刻度环 (r: 446..494)
+  const g5 = document.getElementById('ring5-24shan');
+  g5.innerHTML = '';
+  g5.style.display = state.rings.ring5 ? '' : 'none';
+  if (state.rings.ring5) {
+    SHAN_24.forEach(s => {
+      const start = s.center - 7.5, end = s.center + 7.5;
+      const fill = s.type === 'gua' ? 'rgba(226,190,103,0.16)' : (s.type === 'zhi' ? 'rgba(15,23,42,0.86)' : 'rgba(10,16,30,0.82)');
+      g5.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 446, 494, start, end),
+        fill, stroke: 'rgba(226,190,103,0.28)', 'stroke-width': 1
+      }));
+      g5.appendChild(radialText(cx, cy, 470, s.center, s.name, {
+        fill: s.type === 'gua' ? '#fde68a' : (s.type === 'zhi' ? '#e5e7eb' : '#9ca3af'),
+        'font-size': 18, 'font-weight': s.type === 'gua' ? '800' : '600'
+      }));
+      const t1 = polar(cx, cy, 488, s.center), t2 = polar(cx, cy, 494, s.center);
+      g5.appendChild(svgEl('line', { x1:t1.x, y1:t1.y, x2:t2.x, y2:t2.y, stroke:'#e2be67', 'stroke-width':1.5 }));
+    });
+    GUA_BOUNDARIES.forEach(b => {
+      const p1 = polar(cx, cy, 442, b), p2 = polar(cx, cy, 496, b);
+      g5.appendChild(svgEl('line', { x1:p1.x, y1:p1.y, x2:p2.x, y2:p2.y, stroke:'#ef4444', 'stroke-width':2.4, opacity:0.85 }));
+    });
+  }
+
+  // Ring 4: 12 地支环 (r: 396..446)
+  const g4 = document.getElementById('ring4-12zhi');
+  g4.innerHTML = '';
+  g4.style.display = state.rings.ring4 ? '' : 'none';
+  if (state.rings.ring4) {
+    ZHI_12.forEach(z => {
+      const start = z.center - 15, end = z.center + 15;
+      const isKong = chart.xunKongZhis.includes(z.name);
+      const isMa = (chart.maZhi === z.name);
+      let fill = 'rgba(13, 21, 38, 0.84)';
+      if (isKong) fill = 'rgba(139, 92, 246, 0.28)';
+      else if (isMa) fill = 'rgba(245, 158, 11, 0.25)';
+
+      g4.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 396, 446, start, end),
+        fill, stroke: 'rgba(148,163,184,0.32)', 'stroke-width': 1.2
+      }));
+      g4.appendChild(radialText(cx, cy, 424, z.center, z.name, {
+        fill: isKong ? '#ddd6fe' : (isMa ? '#fde68a' : '#cbd5e1'),
+        'font-size': 21, 'font-weight': '700'
+      }));
+      if (isKong || isMa) {
+        const tag = (isKong ? '空' : '') + (isMa ? '马' : '');
+        g4.appendChild(radialText(cx, cy, 406, z.center, tag, {
+          fill: isKong ? '#c4b5fd' : '#fbbf24', 'font-size': 12, 'font-weight': '800'
+        }));
+      }
+    });
+  }
+
+  // Ring 3: 格局 / 现代行动与配色环 (r: 334..396)
+  const g3 = document.getElementById('ring3-geju');
+  g3.innerHTML = '';
+  g3.style.display = state.rings.ring3 ? '' : 'none';
+  if (state.rings.ring3) {
+    RING_ORDER.forEach(pNum => {
+      const pd = chart.palaces[pNum];
+      const start = pd.center - 22.5, end = pd.center + 22.5;
+      const fill = pd.eval.status === 'good'
+        ? 'rgba(16, 185, 129, 0.14)'
+        : pd.eval.status === 'warn' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(15, 23, 42, 0.78)';
+      const grp = svgEl('g', { class: 'palace-hit' });
+      grp.onclick = () => handlePalaceTap(pNum);
+
+      grp.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 334, 396, start, end),
+        fill, stroke: 'rgba(226,190,103,0.35)', 'stroke-width': 1.3
+      }));
+
+      if (state.labelMode === 'action') {
+        const intent = DOOR_INTENTS[pd.door];
+        const beh = STEM_BEHAVIOR[pd.heavenStem] || STEM_BEHAVIOR['戊'];
+        grp.appendChild(radialText(cx, cy, 374, pd.center, intent.short, {
+          fill: pd.eval.status === 'good' ? '#6ee7b7' : (pd.eval.status === 'warn' ? '#fde68a' : '#94a3b8'),
+          'font-size': 18, 'font-weight': '800'
+        }));
+        grp.appendChild(radialText(cx, cy, 349, pd.center, `色:${beh.shortColor} · ${pd.dir}`, {
+          fill: beh.colorHex === '#475569' ? '#cbd5e1' : beh.colorHex,
+          'font-size': 13.5, 'font-weight': '700'
+        }));
+      } else {
+        const mainText = pd.goodForms[0] || pd.badForms[0] || `${pd.dir}·${pd.gua}${pNum}`;
+        const subText = pd.goodForms.length > 1
+          ? pd.goodForms[1]
+          : (pd.badForms.length && pd.goodForms.length ? pd.badForms[0] : (pd.marks.length ? '状态:' + pd.marks.join('') : `${pd.dir}·${pd.gua}${pNum}`));
+        grp.appendChild(radialText(cx, cy, 373, pd.center, mainText, {
+          fill: pd.goodForms.length ? '#fde68a' : (pd.badForms.length ? '#fca5a5' : '#9ca3af'),
+          'font-size': 18, 'font-weight': '800'
+        }));
+        grp.appendChild(radialText(cx, cy, 349, pd.center, subText, {
+          fill: pd.marks.length ? '#fca5a5' : '#cbd5e1',
+          'font-size': 13, 'font-weight': '600'
+        }));
+      }
+      g3.appendChild(grp);
+    });
+  }
+
+  // Ring 2: 出行诀评级 & 三胜五不击导航环 (r: 264..334)
+  const g2 = document.getElementById('ring2-chuxing');
+  g2.innerHTML = '';
+  g2.style.display = state.rings.ring2 ? '' : 'none';
+  if (state.rings.ring2) {
+    RING_ORDER.forEach(pNum => {
+      const pd = chart.palaces[pNum];
+      const start = pd.center - 22.5, end = pd.center + 22.5;
+      const ev = pd.eval;
+      let fill = 'rgba(239,68,68,0.16)';
+      if (ev.tier >= 4) fill = 'rgba(16,185,129,0.42)';
+      else if (ev.tier === 3) fill = 'rgba(34,211,238,0.34)';
+      else if (ev.tier === 2) fill = 'rgba(96,165,250,0.30)';
+      else if (ev.tier === 1) fill = 'rgba(132,204,22,0.26)';
+      else if (ev.status === 'warn') fill = 'rgba(245,158,11,0.28)';
+
+      const grp = svgEl('g', { class: 'palace-hit' });
+      grp.onclick = () => handlePalaceTap(pNum);
+
+      grp.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 264, 334, start, end),
+        fill, stroke: ev.tier >= 3 ? ev.color : 'rgba(226,190,103,0.4)',
+        'stroke-width': ev.tier >= 3 ? 2.4 : 1.3
+      }));
+
+      grp.appendChild(radialText(cx, cy, 307, pd.center, ev.label, {
+        fill: ev.status === 'bad' ? '#fca5a5' : '#ffffff',
+        'font-size': 19, 'font-weight': '800'
+      }));
+
+      const badges = [];
+      if (pd.isSanSheng) badges.push('三胜');
+      else if (pd.isWuBuJi) badges.push('五不击');
+      if (pd.marks.length) badges.push(pd.marks.join('·'));
+      if (badges.length) {
+        grp.appendChild(radialText(cx, cy, 281, pd.center, badges.join(' '), {
+          fill: pd.marks.length ? '#fecaca' : '#fde68a',
+          'font-size': 13.5, 'font-weight': '700'
+        }));
+      }
+      g2.appendChild(grp);
+    });
+  }
+
+  // Ring 1: 奇门八宫核心排盘环 (r: 108..264)
+  const g1 = document.getElementById('ring1-qimen');
+  g1.innerHTML = '';
+  g1.style.display = state.rings.ring1 ? '' : 'none';
+  if (state.rings.ring1) {
+    RING_ORDER.forEach(pNum => {
+      const pd = chart.palaces[pNum];
+      const start = pd.center - 22.5, end = pd.center + 22.5;
+      const grp = svgEl('g', { class: 'palace-hit' });
+      grp.onclick = () => handlePalaceTap(pNum);
+
+      grp.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 108, 264, start, end),
+        fill: pd.eval.status === 'good' ? 'rgba(13, 30, 42, 0.88)' : 'rgba(10, 16, 30, 0.88)',
+        stroke: 'rgba(226,190,103,0.5)', 'stroke-width': 1.6
+      }));
+
+      grp.appendChild(radialText(cx, cy, 240, pd.center, pd.god, {
+        fill: ['值符','太阴','九地','九天'].includes(pd.god) ? '#fde68a' : '#cbd5e1',
+        'font-size': 20, 'font-weight': '800'
+      }));
+
+      const starTxt = pd.star + (pd.hasQin ? '禽' : '');
+      grp.appendChild(radialText(cx, cy, 206, pd.center - 7, starTxt, {
+        fill: '#93c5fd', 'font-size': 17, 'font-weight': '700'
+      }));
+      const hStemTxt = pd.heavenStem + (pd.heavenJiStem ? pd.heavenJiStem : '');
+      grp.appendChild(radialText(cx, cy, 206, pd.center + 11, hStemTxt, {
+        fill: ['乙','丙','丁'].includes(pd.heavenStem) ? '#34d399' : '#f8fafc',
+        'font-size': 22, 'font-weight': '900'
+      }));
+
+      const doorColor = ['开门','休门','生门'].includes(pd.door) ? '#34d399' : (pd.door === '景门' ? '#fbbf24' : '#f87171');
+      grp.appendChild(radialText(cx, cy, 166, pd.center - 7, pd.door, {
+        fill: doorColor, 'font-size': 22, 'font-weight': '900'
+      }));
+      const eStemTxt = pd.earthStem + (pd.earthJiStem ? pd.earthJiStem : '');
+      grp.appendChild(radialText(cx, cy, 166, pd.center + 11, eStemTxt, {
+        fill: '#9ca3af', 'font-size': 19, 'font-weight': '700'
+      }));
+
+      grp.appendChild(radialText(cx, cy, 128, pd.center, `${pd.gua}${pNum}`, {
+        fill: 'rgba(226,190,103,0.85)', 'font-size': 16, 'font-weight': '800'
+      }));
+
+      g1.appendChild(grp);
+    });
+  }
+
+  // 中五宫中心圆盘 (独立正立)
+  const hub = document.getElementById('center-hub');
+  hub.innerHTML = '';
+  hub.appendChild(svgEl('circle', { cx, cy, r: 108, fill: 'url(#centerGlow)', stroke: '#e2be67', 'stroke-width': 2.5 }));
+  hub.appendChild(svgEl('text', { x:cx, y:cy-30, 'text-anchor':'middle', fill:'#e2be67', 'font-size':22, 'font-weight':800 },
+    `${chart.juInfo.isYang ? '阳遁' : '阴遁'}${chart.juInfo.juNumber}局`));
+  hub.appendChild(svgEl('text', { x:cx, y:cy-4, 'text-anchor':'middle', fill:'#f3f4f6', 'font-size':17, 'font-weight':700 },
+    `${chart.juInfo.jqName}·${chart.juInfo.yuanName}`));
+  hub.appendChild(svgEl('text', { x:cx, y:cy+22, 'text-anchor':'middle', fill:'#93c5fd', 'font-size':16, 'font-weight':700 },
+    `符:${chart.zhiFuStar} 使:${chart.zhiShiDoor}`));
+  hub.appendChild(svgEl('text', { x:cx, y:cy+48, 'text-anchor':'middle', fill:'#9ca3af', 'font-size':15 },
+    `中五寄干:${chart.earthCenterStem} 空:${chart.xunKongStr}`));
+}
+
+/* ============================================================================
+ * 六、HUD 刷新 & 动画循环
+ * ============================================================================ */
+function updateMetaBar() {
+  const c = state.chart;
+  if (!c) return;
+  const d = c.dateObj;
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const timeStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const best = c.ranking[0];
+  let html = `
+    <span>${timeStr}</span>
+    <span class="bazi">${c.bazi.y} ${c.bazi.m} ${c.bazi.d} ${c.bazi.h}</span>
+    <span>${c.juInfo.isYang?'阳':'阴'}${c.juInfo.juNumber}局(${c.juInfo.jqName}${c.juInfo.isLeapTerm?'·闰':''})</span>
+    <span style="color:#6ee7b7">首选:${best.dir}(${best.door}·${best.eval.short})</span>
+  `;
+  if (c.wuBuYuShi) {
+    html += `<span class="tag-bad">⚠️ 五不遇时(${c.bazi.hGan}克${c.bazi.dGan})</span>`;
+  }
+  document.getElementById('meta-bar').innerHTML = html;
+}
+
+function updateHeadingHUD() {
+  const info = getDirLookup(state.heading);
+  document.getElementById('hud-deg').textContent = `${info.deg.toFixed(1).padStart(5, '0')}°`;
+  const c = state.chart;
+  if (!c) return;
+  const pd = c.palaces[info.palaceNum];
+  const beh = STEM_BEHAVIOR[pd.heavenStem] || STEM_BEHAVIOR['戊'];
+  document.getElementById('hud-dir').textContent = `${pd.dir} · ${pd.gua}${pd.num}宫`;
+  document.getElementById('hud-sub').textContent = `${info.shanObj.name}山(24山) · ${info.zhiObj.name}宫(12支)`;
+
+  const ev = pd.eval;
+  const extra = pd.goodForms[0] || (pd.marks.length ? '留意:' + pd.marks.join('/') : `宜色:${beh.shortColor}`);
+  document.getElementById('hud-eval').innerHTML = `
+    <div><span class="level-badge" style="background:${ev.color}">${ev.label}</span> <strong style="color:#fff">${pd.door}</strong></div>
+    <div style="color:#cbd5e1">${pd.god} · ${pd.star} · ${pd.heavenStem}/${pd.earthStem} · ${extra}</div>
+  `;
+  document.getElementById('crack-warn').classList.toggle('show', info.nearBoundary);
+}
+
+function animateLoop() {
+  const diff = ((state.targetHeading - state.heading + 540) % 360) - 180;
+  if (Math.abs(diff) > 0.05) {
+    state.heading = normDeg(state.heading + diff * 0.22);
+    document.getElementById('wheel-group').setAttribute('transform', `rotate(${-state.heading.toFixed(2)} 500 500)`);
+    updateHeadingHUD();
+  }
+  updateDiagUI();
+  requestAnimationFrame(animateLoop);
+}
+
+function recomputeAndRender() {
+  if (typeof Solar === 'undefined') return;
+  state.chart = QimenEngine.generate(state.date, state.method, state.wuBuJiMode);
+  renderCompassSVG();
+  updateMetaBar();
+  updateHeadingHUD();
+}
+
+/* ============================================================================
+ * 七、弹窗交互：本宫详批 / 出行诀正反查 / 吉格三胜 / 时间选择
+ * ============================================================================ */
+function openModal(title, html) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.remove('open');
+}
+
+function openCurrentPalaceDetail() {
+  const info = getDirLookup(state.heading);
+  openPalaceDetail(info.palaceNum);
+}
+
+function openPalaceDetail(pNum) {
+  const c = state.chart;
+  if (!c) return;
+  const pd = c.palaces[pNum];
+  const intent = DOOR_INTENTS[pd.door];
+  const beh = STEM_BEHAVIOR[pd.heavenStem] || STEM_BEHAVIOR['戊'];
+  const earthBeh = STEM_BEHAVIOR[pd.earthStem] || STEM_BEHAVIOR['戊'];
+  const isBadSector = pd.eval.status === 'bad';
+
+  const html = `
+    <div class="card ${pd.eval.status}">
+      <div class="card-title">
+        <span>${pd.dir} · ${pd.gua}${pd.num}宫（五行${pd.elem}）</span>
+        <span class="level-badge" style="background:${pd.eval.color}">${pd.eval.label}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">
+        24山范围：<strong>${pd.shan.join(' / ')}</strong>（中心 ${pd.center}°）｜12地支：<strong>${pd.zhi.join(' / ')}</strong>
+      </div>
+      <div class="pill-row">
+        <span class="pill y">八神: ${pd.god}</span>
+        <span class="pill y">九星: ${pd.star}${pd.hasQin?'(带天禽)':''}</span>
+        <span class="pill ${['开门','休门','生门'].includes(pd.door)?'g':'b'}">八门: ${pd.door}</span>
+        <span class="pill">天/地盘干: ${pd.heavenStem}${pd.heavenJiStem?'('+pd.heavenJiStem+')':''} / ${pd.earthStem}${pd.earthJiStem?'('+pd.earthJiStem+')':''}</span>
+        ${pd.isSanSheng ? '<span class="pill g">★ 三胜宫</span>' : ''}
+        ${(!pd.isSanSheng && pd.isWuBuJi) ? '<span class="pill y">★ 五不击</span>' : ''}
+        ${pd.isMa ? '<span class="pill y">🐎 驿马</span>' : ''}
+        ${pd.marks.map(m => `<span class="pill b">⚠️ ${m}</span>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>🎨 人和·行为风水（主取天盘「${pd.heavenStem}」）</span>
+        <span style="font-size:11.5px;color:#e5e7eb;"><i class="color-dot" style="background:${beh.colorHex}"></i>${beh.colorName}</span>
+      </div>
+      ${isBadSector
+        ? `<div style="font-size:12px;color:#fca5a5;margin-bottom:6px;">⚠️ 本宫为避忌方位，建议优先改选吉方；若事务必须前往，可借以下同频元素稳住心神。</div>`
+        : `<div style="font-size:12px;color:#6ee7b7;margin-bottom:6px;">✅ 顺势增旺：以下配色、随身物、出发微动作任选 1–2 项顺手执行即可，不必刻意凑齐。</div>`
+      }
+      <div><strong>随身物象：</strong>${beh.items}</div>
+      <div style="margin-top:4px"><strong>行为动作：</strong>${beh.actions}</div>
+      <div style="margin-top:4px;font-size:12px;color:#fde68a"><strong>静心收尾：</strong>出发前可面向${pd.dir}深呼吸 3 次，温水分 <strong>${pd.num}</strong> 小口饮尽，轻念「${intent.affirm}」。</div>
+      <div style="margin-top:4px;font-size:11.5px;color:var(--muted)"><strong>地盘呼应（${pd.earthStem}）：</strong>辅色 ${earthBeh.colorName} · ${earthBeh.items.split('、')[0]}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>🎯 出行诀评估与格局</span></div>
+      <div><strong>综合依据：</strong>${pd.eval.reasons.join('；')}</div>
+      <div style="margin-top:6px"><strong>命中吉格：</strong>${pd.goodForms.length ? pd.goodForms.map(g=>`<span class="pill g">${g}</span>`).join(' ') : '<span style="color:var(--muted)">无特殊吉格</span>'}</div>
+      <div style="margin-top:6px"><strong>命中凶格：</strong>${pd.badForms.length ? pd.badForms.map(b=>`<span class="pill b">${b}</span>`).join(' ') : '<span style="color:var(--muted)">无明显凶格</span>'}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>🌿 门神象意与宜办事项</span></div>
+      <div><strong>${pd.door}（${intent.title}）：</strong>${intent.desc}</div>
+      <div class="pill-row">
+        ${intent.activities.map(a => `<span class="pill">${a}</span>`).join('')}
+      </div>
+      <div style="margin-top:6px"><strong>${pd.god}：</strong>${GOD_DESC[pd.god]}</div>
+    </div>
+
+    <button type="button" class="btn-full" onclick="pointCompassTo(${pd.center});closeModal();">🧭 在模拟罗盘中指向此方位（${pd.dir} ${pd.center}°）</button>
+  `;
+  openModal(`${pd.dir} · ${pd.gua}${pd.num}宫详批`, html);
+}
+
+function pointCompassTo(deg) {
+  if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+  sensorCtrl.rawDeg = deg;
+  sensorCtrl.compDeg = normDeg(deg + sensorCtrl.declination);
+  state.targetHeading = sensorCtrl.compDeg;
+  const slider = document.getElementById('sim-slider');
+  const simVal = document.getElementById('sim-val');
+  if (slider) slider.value = deg;
+  if (simVal) simVal.textContent = deg + '°';
+}
+
+let cxTab = 'forward';
+let cxPurpose = 'all';
+
+function openChuXingModal(tab = cxTab, purpose = cxPurpose) {
+  cxTab = tab;
+  cxPurpose = purpose;
+  const c = state.chart;
+  if (!c) return;
+
+  let body = `
+    <div class="tab-bar">
+      <button type="button" class="tab-btn ${cxTab==='forward'?'active':''}" onclick="openChuXingModal('forward', cxPurpose)">📍 正查当前盘方位</button>
+      <button type="button" class="tab-btn ${cxTab==='reverse'?'active':''}" onclick="openChuXingModal('reverse', cxPurpose)">🔎 反查最佳出行时间</button>
+    </div>
+  `;
+
+  if (cxTab === 'forward') {
+    if (c.wuBuYuShi) {
+      body += `<div class="card bad"><strong>⚠️ 当前为五不遇时（时干${c.bazi.hGan}克日干${c.bazi.dGan}）</strong><br>古诀云「五不遇时百事凶」，非紧急事务建议切换到「反查」寻找下一吉时。</div>`;
+    }
+
+    const purposes = [
+      { id:'all', label:'全部方位' },
+      { id:'career', label:'开门·事业' },
+      { id:'noble', label:'休门·贵人' },
+      { id:'wealth', label:'生门·求财' },
+      { id:'exam', label:'景门·考试展示' }
+    ];
+    body += `<div class="filter-chips">${purposes.map(p =>
+      `<button type="button" class="fchip ${cxPurpose===p.id?'active':''}" onclick="openChuXingModal('forward','${p.id}')">${p.label}</button>`
+    ).join('')}</div>`;
+
+    const targetDoors = ['开门','休门','生门','景门'];
+    let list = [...c.ranking].sort((a,b) => {
+      const aIn = targetDoors.includes(a.door) ? 1 : 0;
+      const bIn = targetDoors.includes(b.door) ? 1 : 0;
+      if (b.eval.tier !== a.eval.tier) return b.eval.tier - a.eval.tier;
+      return bIn - aIn;
+    });
+
+    if (cxPurpose !== 'all') {
+      list = list.filter(pd => DOOR_INTENTS[pd.door].tag === cxPurpose);
+    }
+
+    list.forEach(pd => {
+      const intent = DOOR_INTENTS[pd.door];
+      const beh = STEM_BEHAVIOR[pd.heavenStem] || STEM_BEHAVIOR['戊'];
+      body += `
+        <div class="card ${pd.eval.status}" style="cursor:pointer" onclick="openPalaceDetail(${pd.num})">
+          <div class="card-title">
+            <span>${pd.dir}（${pd.gua}${pd.num}）· ${pd.door} · ${pd.god}</span>
+            <span class="level-badge" style="background:${pd.eval.color}">${pd.eval.label}</span>
+          </div>
+          <div style="font-size:12px;color:#d1d5db">
+            ${pd.star}｜${pd.heavenStem}/${pd.earthStem}｜24山:${pd.shan.join('/')}
+            ${pd.goodForms.length ? '｜吉格:' + pd.goodForms.join('、') : ''}
+            ${pd.marks.length ? '｜⚠️' + pd.marks.join('/') : ''}
+          </div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:3px">宜：${intent.activities.slice(0,4).join('、')}</div>
+          <div class="mini-beh">
+            <span><i class="color-dot" style="background:${beh.colorHex}"></i><strong>${beh.colorName}</strong></span> ｜
+            <span>物象：${beh.items.split('、').slice(0,2).join('、')}</span>
+          </div>
+        </div>
+      `;
+    });
+  } else {
+    body += `
+      <div class="card">
+        <div class="form-row">
+          <label>目标方向</label>
+          <select id="rev-palace">
+            ${RING_ORDER.map(p => `<option value="${p}">${PALACE_META[p].dir}（${PALACE_META[p].gua}${p} · ${PALACE_META[p].shan.join('')}）</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>限定吉门</label>
+          <select id="rev-door">
+            <option value="any">开 / 休 / 生（三吉门优先）</option>
+            <option value="开门">仅限 开门（事业/破局）</option>
+            <option value="休门">仅限 休门（贵人/人际）</option>
+            <option value="生门">仅限 生门（求财/健康）</option>
+            <option value="景门">含 景门（考试/展示）</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>过滤条件</label>
+          <select id="rev-strict">
+            <option value="strict">严苛净界（无迫刑墓空、无凶格、非五不遇时）</option>
+            <option value="relaxed">宽松模式（允许轻微瑕疵或景门）</option>
+          </select>
+        </div>
+        <button type="button" class="btn-full" onclick="runReverseSearch()">🔍 扫描未来 7 天最近 5 个吉时</button>
+      </div>
+      <div id="rev-results"></div>
+    `;
+  }
+  openModal('🧭 奇门出行诀（正查 / 反查）', body);
+}
+
+function runReverseSearch() {
+  const targetP = parseInt(document.getElementById('rev-palace').value, 10);
+  const doorFilter = document.getElementById('rev-door').value;
+  const strict = document.getElementById('rev-strict').value === 'strict';
+  const results = [];
+
+  let scan = new Date(state.date.getTime());
+  const curH = scan.getHours();
+  const alignedH = curH === 23 ? 23 : (curH % 2 === 1 ? curH + 1 : curH);
+  scan.setHours(alignedH, 0, 0, 0);
+
+  for (let i = 0; i < 84 && results.length < 5; i++) {
+    const t = new Date(scan.getTime() + i * 2 * 3600 * 1000);
+    const ch = QimenEngine.generate(t, state.method, state.wuBuJiMode);
+    if (ch.wuBuYuShi) continue;
+    const pd = ch.palaces[targetP];
+
+    if (doorFilter === 'any') {
+      if (!['开门','休门','生门'].includes(pd.door)) continue;
+    } else if (pd.door !== doorFilter) {
+      continue;
+    }
+
+    if (strict && pd.eval.tier < 1) continue;
+    if (!strict && pd.eval.tier < 0.5) continue;
+
+    results.push({ time: t, chart: ch, pd });
+  }
+
+  const box = document.getElementById('rev-results');
+  if (!results.length) {
+    box.innerHTML = `<div class="card warn">未来 7 天内未找到满足该严苛条件的时段，可尝试切换为「宽松模式」或放宽吉门限制。</div>`;
+    return;
+  }
+
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+  box.innerHTML = results.map((r, idx) => {
+    const d = r.time;
+    const h = d.getHours();
+    const startH = h === 0 ? 23 : (h % 2 === 0 ? h - 1 : h);
+    const endH = (startH + 2) % 24;
+    const labelTime = `${d.getMonth()+1}月${d.getDate()}日(${weekdays[d.getDay()]}) ${r.chart.bazi.hZhi}时 (${pad(startH)}:00-${pad(endH)}:00)`;
+    const beh = STEM_BEHAVIOR[r.pd.heavenStem] || STEM_BEHAVIOR['戊'];
+    return `
+      <div class="card ${r.pd.eval.status}">
+        <div class="card-title">
+          <span>#${idx+1} ${labelTime}</span>
+          <span class="level-badge" style="background:${r.pd.eval.color}">${r.pd.eval.label}</span>
+        </div>
+        <div style="font-size:12px;color:#d1d5db">
+          ${r.pd.dir} · ${r.pd.door} · ${r.pd.god} · ${r.pd.star} · ${r.pd.heavenStem}/${r.pd.earthStem}
+          ${r.pd.goodForms.length ? '<br>吉格：' + r.pd.goodForms.join('、') : ''}
+        </div>
+        <div class="mini-beh">
+          <i class="color-dot" style="background:${beh.colorHex}"></i>${beh.colorName} ｜ ${beh.items.split('、').slice(0,2).join('、')}
+        </div>
+        <button type="button" style="margin-top:8px;padding:5px 10px;border-radius:6px;border:1px solid var(--gold);background:rgba(226,190,103,0.16);color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;"
+          onclick="jumpToTime(${d.getTime()}, ${targetP})">🎯 切到此吉时并在罗盘指向${r.pd.dir}</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function jumpToTime(ts, targetP) {
+  state.date = new Date(ts);
+  recomputeAndRender();
+  pointCompassTo(PALACE_META[targetP].center);
+  closeModal();
+}
+
+function openSummaryModal() {
+  const c = state.chart;
+  if (!c) return;
+  const sanShengList = RING_ORDER.filter(p => c.palaces[p].isSanSheng).map(p => `${c.palaces[p].dir}(${c.palaces[p].gua}${p})`);
+  const wuBuJiList = RING_ORDER.filter(p => c.palaces[p].isWuBuJi).map(p => `${c.palaces[p].dir}(${c.palaces[p].gua}${p})`);
+
+  const html = `
+    <div class="card">
+      <div class="card-title"><span>🛡️ 三胜宫与五不击</span></div>
+      <div class="form-row" style="margin-top:6px;margin-bottom:6px">
+        <label>五不击流派</label>
+        <select onchange="state.wuBuJiMode=this.value;recomputeAndRender();openSummaryModal();">
+          <option value="zhishi" ${state.wuBuJiMode==='zhishi'?'selected':''}>值使派（值符+九天+生门+九地+值使）</option>
+          <option value="dingqi" ${state.wuBuJiMode==='dingqi'?'selected':''}>丁奇派（值符+九天+生门+九地+天盘丁奇）</option>
+        </select>
+      </div>
+      <div style="font-size:12px"><strong>三胜宫（宜背之出击）：</strong><span style="color:#6ee7b7">${sanShengList.join('、')}</span></div>
+      <div style="font-size:12px;margin-top:4px"><strong>五不击（忌冲犯攻击）：</strong><span style="color:#fde68a">${wuBuJiList.join('、')}</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>🌟 本盘吉格总览（共 ${c.globalAuspicious.length} 项）</span></div>
+      ${c.globalAuspicious.length ? c.globalAuspicious.map(g => `
+        <div style="padding:5px 0;border-bottom:1px dashed rgba(255,255,255,0.1);display:flex;justify-content:space-between;cursor:pointer"
+             onclick="openPalaceDetail(${g.palace})">
+          <strong style="color:var(--gold)">${g.name}</strong>
+          <span style="color:#d1d5db;font-size:12px">${g.dir}（${g.gua}${g.palace} · ${g.door}） ›</span>
+        </div>
+      `).join('') : '<div style="color:var(--muted)">本时辰未命中大吉格，可优先参考三吉门纯净宫位。</div>'}
+    </div>
+  `;
+  openModal('🌟 吉格总览与三胜五不击', html);
+}
+
+function openTimeModal() {
+  const d = state.date;
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const localVal = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const html = `
+    <div class="card">
+      <div class="form-row">
+        <label>公历时间</label>
+        <input type="datetime-local" id="dt-input" value="${localVal}">
+      </div>
+      <button type="button" class="btn-full" onclick="applyCustomTime()">确认排盘</button>
+    </div>
+  `;
+  openModal('📅 自选排盘时间（时家）', html);
+}
+function applyCustomTime() {
+  const val = document.getElementById('dt-input').value;
+  if (val) {
+    state.date = new Date(val);
+    recomputeAndRender();
+  }
+  closeModal();
+}
+function stepHour(delta) {
+  state.date = new Date(state.date.getTime() + delta * 3600 * 1000);
+  recomputeAndRender();
+}
+function resetToNow() {
+  state.date = new Date();
+  recomputeAndRender();
+}
+
+function toggleLabelMode() {
+  state.labelMode = state.labelMode === 'geju' ? 'action' : 'geju';
+  document.getElementById('btn-label-mode').textContent = state.labelMode === 'geju' ? '模式: 传统格局' : '模式: 现代行动';
+  renderCompassSVG();
+}
+function toggleTilt3D() {
+  state.tilt3D = !state.tilt3D;
+  document.getElementById('compass-shell').classList.toggle('tilt-3d', state.tilt3D);
+  document.getElementById('btn-tilt').classList.toggle('on', state.tilt3D);
+}
+
+/* ============================================================================
+ * 八、手势拖拽旋转（防误触） & 事件绑定初始化
+ * ============================================================================ */
+function initInteractions() {
+  document.querySelectorAll('#method-seg button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#method-seg button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.method = btn.dataset.m;
+      recomputeAndRender();
+    };
+  });
+
+  document.querySelectorAll('#ring-toggles .chip[data-ring]').forEach(btn => {
+    btn.onclick = () => {
+      const k = btn.dataset.ring;
+      state.rings[k] = !state.rings[k];
+      btn.classList.toggle('on', state.rings[k]);
+      renderCompassSVG();
+    };
+  });
+
+  const slider = document.getElementById('sim-slider');
+  const simVal = document.getElementById('sim-val');
+  slider.oninput = () => {
+    if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+    const raw = parseFloat(slider.value);
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    simVal.textContent = `${raw.toFixed(1)}°`;
+  };
+
+  const stage = document.getElementById('compass-stage');
+  let dragging = false, startAngle = 0, startRaw = 0, startX = 0, startY = 0;
+  function getPointerAngle(e) {
+    const rect = stage.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const pt = e.touches ? e.touches[0] : e;
+    return Math.atan2(pt.clientY - cy, pt.clientX - cx) * (180 / Math.PI);
+  }
+  stage.addEventListener('pointerdown', e => {
+    state.dragMoved = false;
+    if (state.sensorActive) return;
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startAngle = getPointerAngle(e);
+    startRaw = sensorCtrl.rawDeg;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 6) {
+      state.dragMoved = true;
+    }
+    const delta = getPointerAngle(e) - startAngle;
+    const raw = normDeg(startRaw - delta);
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    slider.value = raw;
+    simVal.textContent = `${raw.toFixed(1)}°`;
+  });
+  window.addEventListener('pointerup', () => {
+    dragging = false;
+    setTimeout(() => { state.dragMoved = false; }, 50);
+  });
+
+  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!isSecure) document.getElementById('https-banner').classList.add('show');
+  syncSensorDockUI();
+}
+
+window.__onLunarReady = function() {
+  recomputeAndRender();
+};
+
+window.addEventListener('DOMContentLoaded', () => {
+  initInteractions();
+  if (typeof Solar !== 'undefined') recomputeAndRender();
+  requestAnimationFrame(animateLoop);
+});
+</script>
+</body>
+</html>
