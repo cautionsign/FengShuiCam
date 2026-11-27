@@ -164,10 +164,7 @@
     width: 100%; height: 100%; overflow: visible;
     filter: drop-shadow(0 8px 26px rgba(0,0,0,0.65));
   }
-  /* 锁死 SVG 原点为 0 0，防止与 rotate(deg 500 500) 叠加漂移 */
-  #wheel-group {
-    transform-origin: 0 0;
-  }
+  #wheel-group { transform-origin: 0 0; }
   .palace-hit { cursor: pointer; transition: opacity .15s; }
   .palace-hit:hover { opacity: 0.88; }
 
@@ -231,7 +228,7 @@
   }
   .modal-backdrop.open { display: flex; }
   .sheet {
-    width: 100%; max-width: 520px; max-height: 84vh;
+    width: 100%; max-width: 520px; max-height: 86vh;
     background: var(--panel-solid); border: 1px solid var(--border);
     border-bottom: none; border-radius: 18px 18px 0 0;
     display: flex; flex-direction: column; overflow: hidden;
@@ -289,17 +286,82 @@
     font-size: 11.5px; color: #cbd5e1;
   }
 
-  .form-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+  .form-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
   .form-row label { font-size: 12px; color: var(--muted); min-width: 58px; }
   .form-row select, .form-row input {
     flex: 1; background: #141d31; color: #fff; border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 8px; padding: 8px 10px; font-size: 13px;
+    border-radius: 8px; padding: 7px 10px; font-size: 12.5px;
+  }
+  .form-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .form-row-2col select {
+    width: 100%; background: #141d31; color: #fff; border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px; padding: 7px 8px; font-size: 12px;
   }
   .btn-full {
     width: 100%; padding: 10px; border-radius: 10px; border: none;
     background: linear-gradient(135deg, #c4a352, #e2be67); color: #0b111e;
     font-weight: 800; font-size: 13px; cursor: pointer;
   }
+  .btn-ghost {
+    width: 100%; padding: 8px; border-radius: 9px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.18);
+    color: var(--gold); font-weight: 700; font-size: 12px; margin-top: 4px;
+  }
+
+  /* 日历热力图样式 */
+  .hm-card {
+    background: rgba(15, 23, 42, 0.72); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 10px 12px; margin-bottom: 10px;
+  }
+  .hm-top {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; gap: 6px; flex-wrap: wrap;
+  }
+  .hm-title { font-size: 13px; font-weight: 800; color: var(--gold); }
+  .hm-legend { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--muted); }
+  .hm-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+  .hm-topdays { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .hm-top-pill {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+    background: rgba(16,185,129,0.18); border: 1px solid rgba(16,185,129,0.5);
+    color: #6ee7b7; font-weight: 700;
+  }
+  .hm-top-pill.sel { background: var(--gold); color: #0b111e; border-color: var(--gold); }
+
+  .hm-weekdays {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    text-align: center; font-size: 10px; color: var(--muted); margin-bottom: 4px;
+  }
+  .hm-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  }
+  .hm-cell {
+    position: relative; border-radius: 7px; padding: 5px 2px 4px;
+    text-align: center; cursor: pointer; min-height: 42px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,0.06); transition: transform .12s, border-color .12s;
+  }
+  .hm-cell.empty { background: transparent; border: none; cursor: default; }
+  .hm-cell.h0 { background: rgba(255,255,255,0.03); color: #6b7280; }
+  .hm-cell.h1 { background: rgba(16,185,129,0.16); color: #a7f3d0; border-color: rgba(16,185,129,0.28); }
+  .hm-cell.h2 { background: rgba(16,185,129,0.32); color: #ecfdf5; border-color: rgba(16,185,129,0.5); }
+  .hm-cell.h3 { background: rgba(16,185,129,0.52); color: #ffffff; border-color: rgba(52,211,153,0.75); }
+  .hm-cell.h4 { background: linear-gradient(135deg, rgba(16,185,129,0.78), rgba(226,190,103,0.55)); color: #ffffff; border-color: #fde68a; }
+  .hm-cell.selected { outline: 2px solid var(--gold); outline-offset: 0px; transform: scale(1.05); z-index: 2; }
+  .hm-day-num { font-size: 11px; font-weight: 800; line-height: 1.1; }
+  .hm-cnt { font-size: 9.5px; opacity: 0.92; margin-top: 2px; line-height: 1; }
+  .hm-star { position: absolute; top: 2px; right: 3px; font-size: 8px; color: #fde68a; line-height: 1; }
+
+  .res-toolbar {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    margin: 8px 0; flex-wrap: wrap; font-size: 11.5px; color: #d1d5db;
+  }
+  .res-toolbar-btns { display: flex; gap: 5px; }
+  .mini-btn {
+    padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.05); color: #d1d5db;
+  }
+  .mini-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(226,190,103,0.16); }
 
   /* 传感器诊断与磁偏校准抽屉 */
   .diag-backdrop {
@@ -411,7 +473,6 @@
         <g id="ring2-chuxing"></g>
         <g id="ring1-qimen"></g>
       </g>
-      <!-- 中宫独立于旋转组之外，保持局数正立清晰 -->
       <g id="center-hub"></g>
     </svg>
   </div>
@@ -614,7 +675,6 @@ const ELEM_KE = { '水':'火','火':'金','金':'木','木':'土','土':'水' };
 const JIXING_MAP = { '戊':3, '己':2, '庚':8, '辛':9, '壬':4, '癸':4 };
 const RUME_MAP = { '乙':[6], '丙':[6], '戊':[6], '丁':[8], '己':[8], '庚':[8], '辛':[4], '壬':[4], '癸':[2] };
 
-// 融合传统与现代生活的「行为风水（人和）」字典
 const STEM_BEHAVIOR = {
   '甲': {
     colorName: '翠绿 / 森林绿', colorHex: '#10b981', shortColor: '绿色',
@@ -739,27 +799,42 @@ const GOD_DESC = {
 };
 
 /* ============================================================================
- * 三、纯原生时家奇门排盘引擎（依赖 lunar.js）
+ * 三、纯原生时家奇门排盘引擎（带节气/置闰双层缓存，60天扫描毫秒级响应）
  * ============================================================================ */
 const QimenEngine = {
+  _jqYearCache: {},
+  _zhiRunDayCache: {},
+
+  getYearTerms(y) {
+    if (this._jqYearCache[y]) return this._jqYearCache[y];
+    const ly = LunarYear.fromYear(y);
+    const jds = ly.getJieQiJulianDays();
+    const list = [];
+    for (let i = 1; i <= 24; i++) {
+      const s = Solar.fromJulianDay(jds[i]);
+      list.push({
+        name: JQ_ORDER[i - 1],
+        idx: i - 1,
+        solar: Solar.fromYmd(s.getYear(), s.getMonth(), s.getDay())
+      });
+    }
+    this._jqYearCache[y] = list;
+    return list;
+  },
+
   calcZhiRunJu(solar) {
     let baseSolar = solar;
     if (solar.getHour() >= 23) baseSolar = solar.next(1);
+    const dayKey = baseSolar.toYmd();
+    if (this._zhiRunDayCache[dayKey]) return this._zhiRunDayCache[dayKey];
+
     const targetDay = Solar.fromYmd(baseSolar.getYear(), baseSolar.getMonth(), baseSolar.getDay());
     const startYear = targetDay.getYear() - 2;
 
     const termList = [];
     for (let y = startYear; y <= targetDay.getYear() + 1; y++) {
-      const ly = LunarYear.fromYear(y);
-      const jds = ly.getJieQiJulianDays();
-      for (let i = 1; i <= 24; i++) {
-        const s = Solar.fromJulianDay(jds[i]);
-        termList.push({
-          name: JQ_ORDER[i - 1],
-          idx: i - 1,
-          solar: Solar.fromYmd(s.getYear(), s.getMonth(), s.getDay())
-        });
-      }
+      const yrTerms = this.getYearTerms(y);
+      for (let k = 0; k < yrTerms.length; k++) termList.push(yrTerms[k]);
     }
 
     const dz0 = termList[0].solar;
@@ -779,12 +854,14 @@ const QimenEngine = {
         const yuanIdx = Math.min(2, Math.floor(daysIn / 5));
         const term = termList[tIdx];
         const info = JQ_TABLE[term.name];
-        return {
+        const res = {
           jqName: term.name, isLeapTerm: isLeapCycle, yuanIdx,
           yuanName: ['上元','中元','下元'][yuanIdx],
           isYang: info.yang, juNumber: info.ju[yuanIdx],
           note: isLeapCycle ? `置闰(${term.name}闰)` : '置闰法'
         };
+        this._zhiRunDayCache[dayKey] = res;
+        return res;
       }
       const curTerm = termList[tIdx], nextTerm = termList[tIdx + 1];
       if (!nextTerm) break;
@@ -1527,7 +1604,7 @@ function renderCompassSVG() {
   if (!chart) return;
   const cx = 500, cy = 500;
 
-  // Ring 5: 24 山精密刻度环 (r: 446..494)
+  // Ring 5: 24 山
   const g5 = document.getElementById('ring5-24shan');
   g5.innerHTML = '';
   g5.style.display = state.rings.ring5 ? '' : 'none';
@@ -1552,7 +1629,7 @@ function renderCompassSVG() {
     });
   }
 
-  // Ring 4: 12 地支环 (r: 396..446)
+  // Ring 4: 12 地支
   const g4 = document.getElementById('ring4-12zhi');
   g4.innerHTML = '';
   g4.style.display = state.rings.ring4 ? '' : 'none';
@@ -1582,7 +1659,7 @@ function renderCompassSVG() {
     });
   }
 
-  // Ring 3: 格局 / 现代行动与配色环 (r: 334..396)
+  // Ring 3: 格局 / 现代行动与配色
   const g3 = document.getElementById('ring3-geju');
   g3.innerHTML = '';
   g3.style.display = state.rings.ring3 ? '' : 'none';
@@ -1630,7 +1707,7 @@ function renderCompassSVG() {
     });
   }
 
-  // Ring 2: 出行诀评级 & 三胜五不击导航环 (r: 264..334)
+  // Ring 2: 出行评级 & 三胜五不击
   const g2 = document.getElementById('ring2-chuxing');
   g2.innerHTML = '';
   g2.style.display = state.rings.ring2 ? '' : 'none';
@@ -1674,7 +1751,7 @@ function renderCompassSVG() {
     });
   }
 
-  // Ring 1: 奇门八宫核心排盘环 (r: 108..264)
+  // Ring 1: 奇门八宫核心盘
   const g1 = document.getElementById('ring1-qimen');
   g1.innerHTML = '';
   g1.style.display = state.rings.ring1 ? '' : 'none';
@@ -1723,7 +1800,7 @@ function renderCompassSVG() {
     });
   }
 
-  // 中五宫中心圆盘 (独立正立)
+  // 中五宫中心圆盘
   const hub = document.getElementById('center-hub');
   hub.innerHTML = '';
   hub.appendChild(svgEl('circle', { cx, cy, r: 108, fill: 'url(#centerGlow)', stroke: '#e2be67', 'stroke-width': 2.5 }));
@@ -1798,7 +1875,7 @@ function recomputeAndRender() {
 }
 
 /* ============================================================================
- * 七、弹窗交互：本宫详批 / 出行诀正反查 / 吉格三胜 / 时间选择
+ * 七、弹窗交互：本宫详批 / 出行诀正反查（含多日热力图）/ 吉格三胜 / 时间选择
  * ============================================================================ */
 function openModal(title, html) {
   document.getElementById('modal-title').textContent = title;
@@ -1891,8 +1968,20 @@ function pointCompassTo(deg) {
   if (simVal) simVal.textContent = deg + '°';
 }
 
+/* ---------- 出行诀状态（保留用户筛选条件与热力图结果） ---------- */
 let cxTab = 'forward';
 let cxPurpose = 'all';
+const revState = {
+  palace: 'any_dir',   // 'any_dir' 或具体宫位数字字符串
+  door: 'any',         // 'any' | '开门' | '休门' | '生门' | '景门'
+  strict: 'strict',    // 'l3plus' | 'strict' | 'relaxed'
+  days: 30,            // 14 | 30 | 60
+  daytimeOnly: true,   // true=仅07:00-23:00 | false=全天24h
+  selectedDay: null,   // 'YYYY-MM-DD' 或 null(显示全部)
+  sortBy: 'time',      // 'time' | 'tier'
+  pageSize: 20,
+  lastScan: null       // { daysList, allMatches, topDays, daysSpan }
+};
 
 function openChuXingModal(tab = cxTab, purpose = cxPurpose) {
   cxTab = tab;
@@ -1903,13 +1992,13 @@ function openChuXingModal(tab = cxTab, purpose = cxPurpose) {
   let body = `
     <div class="tab-bar">
       <button type="button" class="tab-btn ${cxTab==='forward'?'active':''}" onclick="openChuXingModal('forward', cxPurpose)">📍 正查当前盘方位</button>
-      <button type="button" class="tab-btn ${cxTab==='reverse'?'active':''}" onclick="openChuXingModal('reverse', cxPurpose)">🔎 反查最佳出行时间</button>
+      <button type="button" class="tab-btn ${cxTab==='reverse'?'active':''}" onclick="openChuXingModal('reverse', cxPurpose)">📅 吉日热力图 / 反查</button>
     </div>
   `;
 
   if (cxTab === 'forward') {
     if (c.wuBuYuShi) {
-      body += `<div class="card bad"><strong>⚠️ 当前为五不遇时（时干${c.bazi.hGan}克日干${c.bazi.dGan}）</strong><br>古诀云「五不遇时百事凶」，非紧急事务建议切换到「反查」寻找下一吉时。</div>`;
+      body += `<div class="card bad"><strong>⚠️ 当前为五不遇时（时干${c.bazi.hGan}克日干${c.bazi.dGan}）</strong><br>古诀云「五不遇时百事凶」，非紧急事务建议切换到「吉日热力图 / 反查」寻找吉时。</div>`;
     }
 
     const purposes = [
@@ -1930,7 +2019,6 @@ function openChuXingModal(tab = cxTab, purpose = cxPurpose) {
       if (b.eval.tier !== a.eval.tier) return b.eval.tier - a.eval.tier;
       return bIn - aIn;
     });
-
     if (cxPurpose !== 'all') {
       list = list.filter(pd => DOOR_INTENTS[pd.door].tag === cxPurpose);
     }
@@ -1962,97 +2050,328 @@ function openChuXingModal(tab = cxTab, purpose = cxPurpose) {
       <div class="card">
         <div class="form-row">
           <label>目标方向</label>
-          <select id="rev-palace">
-            ${RING_ORDER.map(p => `<option value="${p}">${PALACE_META[p].dir}（${PALACE_META[p].gua}${p} · ${PALACE_META[p].shan.join('')}）</option>`).join('')}
+          <select id="rev-palace" onchange="revState.palace=this.value">
+            <option value="any_dir" ${revState.palace==='any_dir'?'selected':''}>🌟 任意方位（全盘择吉日）</option>
+            ${RING_ORDER.map(p => `<option value="${p}" ${String(revState.palace)===String(p)?'selected':''}>${PALACE_META[p].dir}（${PALACE_META[p].gua}${p} · ${PALACE_META[p].shan.join('')}）</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
           <label>限定吉门</label>
-          <select id="rev-door">
-            <option value="any">开 / 休 / 生（三吉门优先）</option>
-            <option value="开门">仅限 开门（事业/破局）</option>
-            <option value="休门">仅限 休门（贵人/人际）</option>
-            <option value="生门">仅限 生门（求财/健康）</option>
-            <option value="景门">含 景门（考试/展示）</option>
+          <select id="rev-door" onchange="revState.door=this.value">
+            <option value="any" ${revState.door==='any'?'selected':''}>开 / 休 / 生（三吉门优先）</option>
+            <option value="开门" ${revState.door==='开门'?'selected':''}>仅限 开门（事业/破局）</option>
+            <option value="休门" ${revState.door==='休门'?'selected':''}>仅限 休门（贵人/人际）</option>
+            <option value="生门" ${revState.door==='生门'?'selected':''}>仅限 生门（求财/健康）</option>
+            <option value="景门" ${revState.door==='景门'?'selected':''}>仅限 景门（考试/展示）</option>
           </select>
         </div>
         <div class="form-row">
-          <label>过滤条件</label>
-          <select id="rev-strict">
-            <option value="strict">严苛净界（无迫刑墓空、无凶格、非五不遇时）</option>
-            <option value="relaxed">宽松模式（允许轻微瑕疵或景门）</option>
+          <label>过滤标准</label>
+          <select id="rev-strict" onchange="revState.strict=this.value">
+            <option value="l3plus" ${revState.strict==='l3plus'?'selected':''}>高能精选（仅 L3 神庇 / L4 聚气）</option>
+            <option value="strict" ${revState.strict==='strict'?'selected':''}>严苛净界（L1–L4，无迫刑墓空凶格）</option>
+            <option value="relaxed" ${revState.strict==='relaxed'?'selected':''}>宽松模式（含景门或轻微瑕疵）</option>
           </select>
         </div>
-        <button type="button" class="btn-full" onclick="runReverseSearch()">🔍 扫描未来 7 天最近 5 个吉时</button>
+        <div class="form-row-2col">
+          <select id="rev-days" onchange="revState.days=parseInt(this.value,10)">
+            <option value="14" ${revState.days===14?'selected':''}>扫描未来 14 天</option>
+            <option value="30" ${revState.days===30?'selected':''}>扫描未来 30 天（推荐）</option>
+            <option value="60" ${revState.days===60?'selected':''}>扫描未来 60 天</option>
+          </select>
+          <select id="rev-hours" onchange="revState.daytimeOnly=(this.value==='day')">
+            <option value="day" ${revState.daytimeOnly?'selected':''}>仅看常规出行 07-23点</option>
+            <option value="all" ${!revState.daytimeOnly?'selected':''}>全天 24 小时（含深夜）</option>
+          </select>
+        </div>
+        <button type="button" class="btn-full" onclick="runReverseSearch()">🔥 生成吉日热力图并扫描吉时</button>
       </div>
       <div id="rev-results"></div>
     `;
   }
-  openModal('🧭 奇门出行诀（正查 / 反查）', body);
+  openModal('🧭 奇门出行诀（正查 / 热力图反查）', body);
+
+  if (cxTab === 'reverse') {
+    if (revState.lastScan) renderReverseResults();
+    else runReverseSearch();
+  }
+}
+
+function fmtDayKey(d) {
+  const pad = n => (n < 10 ? '0' : '') + n;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
 function runReverseSearch() {
-  const targetP = parseInt(document.getElementById('rev-palace').value, 10);
-  const doorFilter = document.getElementById('rev-door').value;
-  const strict = document.getElementById('rev-strict').value === 'strict';
-  const results = [];
+  const palEl = document.getElementById('rev-palace');
+  const doorEl = document.getElementById('rev-door');
+  const strictEl = document.getElementById('rev-strict');
+  const daysEl = document.getElementById('rev-days');
+  const hrsEl = document.getElementById('rev-hours');
 
-  let scan = new Date(state.date.getTime());
-  const curH = scan.getHours();
-  const alignedH = curH === 23 ? 23 : (curH % 2 === 1 ? curH + 1 : curH);
-  scan.setHours(alignedH, 0, 0, 0);
+  if (palEl) revState.palace = palEl.value;
+  if (doorEl) revState.door = doorEl.value;
+  if (strictEl) revState.strict = strictEl.value;
+  if (daysEl) revState.days = parseInt(daysEl.value, 10) || 30;
+  if (hrsEl) revState.daytimeOnly = (hrsEl.value === 'day');
 
-  for (let i = 0; i < 84 && results.length < 5; i++) {
-    const t = new Date(scan.getTime() + i * 2 * 3600 * 1000);
-    const ch = QimenEngine.generate(t, state.method, state.wuBuJiMode);
-    if (ch.wuBuYuShi) continue;
-    const pd = ch.palaces[targetP];
+  revState.selectedDay = null;
+  revState.pageSize = 20;
 
-    if (doorFilter === 'any') {
-      if (!['开门','休门','生门'].includes(pd.door)) continue;
-    } else if (pd.door !== doorFilter) {
-      continue;
+  const isAnyDir = revState.palace === 'any_dir';
+  const targetPalaces = isAnyDir ? RING_ORDER : [parseInt(revState.palace, 10)];
+  const scanHours = revState.daytimeOnly
+    ? [8, 10, 12, 14, 16, 18, 20, 22]
+    : [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+
+  const anchorDate = new Date(state.date.getTime());
+  const minTs = anchorDate.getTime() - 3600 * 1000; // 允许包含当前正在进行的时辰
+  const baseY = anchorDate.getFullYear();
+  const baseM = anchorDate.getMonth();
+  const baseD = anchorDate.getDate();
+
+  const daysList = [];
+  const allMatches = [];
+
+  for (let dOff = 0; dOff < revState.days; dOff++) {
+    const dayDate = new Date(baseY, baseM, baseD + dOff, 12, 0, 0, 0);
+    const dayKey = fmtDayKey(dayDate);
+    const dayMatches = [];
+    const distinctSlots = new Set();
+    let l4Count = 0, l3Count = 0, heatScore = 0;
+
+    for (let hi = 0; hi < scanHours.length; hi++) {
+      const h = scanHours[hi];
+      const t = new Date(baseY, baseM, baseD + dOff, h, 0, 0, 0);
+      if (t.getTime() < minTs) continue;
+
+      const ch = QimenEngine.generate(t, state.method, state.wuBuJiMode);
+      if (ch.wuBuYuShi) continue;
+
+      let bestSlotTier = 0;
+      for (let pi = 0; pi < targetPalaces.length; pi++) {
+        const pd = ch.palaces[targetPalaces[pi]];
+
+        if (revState.door === 'any') {
+          if (!['开门','休门','生门'].includes(pd.door)) continue;
+        } else if (pd.door !== revState.door) {
+          continue;
+        }
+
+        if (revState.strict === 'l3plus' && pd.eval.tier < 3) continue;
+        if (revState.strict === 'strict' && pd.eval.tier < 1) continue;
+        if (revState.strict === 'relaxed' && pd.eval.tier < 0.5) continue;
+
+        const item = {
+          dayKey,
+          ts: t.getTime(),
+          date: t,
+          hour: h,
+          hZhi: ch.bazi.hZhi,
+          juText: `${ch.juInfo.isYang?'阳':'阴'}${ch.juInfo.juNumber}局`,
+          pd
+        };
+        dayMatches.push(item);
+        allMatches.push(item);
+        distinctSlots.add(h);
+        if (pd.eval.tier > bestSlotTier) bestSlotTier = pd.eval.tier;
+      }
+
+      if (bestSlotTier >= 4) { l4Count++; heatScore += 3; }
+      else if (bestSlotTier >= 3) { l3Count++; heatScore += 2; }
+      else if (bestSlotTier > 0) { heatScore += 1; }
     }
 
-    if (strict && pd.eval.tier < 1) continue;
-    if (!strict && pd.eval.tier < 0.5) continue;
-
-    results.push({ time: t, chart: ch, pd });
+    daysList.push({
+      dayKey,
+      date: dayDate,
+      month: dayDate.getMonth() + 1,
+      day: dayDate.getDate(),
+      weekday: dayDate.getDay(), // 0=日..6=六
+      slotCount: distinctSlots.size,
+      matchCount: dayMatches.length,
+      l4Count,
+      l3Count,
+      heatScore,
+      matches: dayMatches
+    });
   }
 
+  // 计算热力分档（动态自适应单方向 vs 全盘的阈值）
+  const maxScore = Math.max(1, ...daysList.map(d => d.heatScore));
+  daysList.forEach(d => {
+    if (d.slotCount === 0) { d.heatClass = 'h0'; return; }
+    const ratio = d.heatScore / maxScore;
+    if (ratio >= 0.78 && (d.l4Count >= 1 || d.slotCount >= 4)) d.heatClass = 'h4';
+    else if (ratio >= 0.52) d.heatClass = 'h3';
+    else if (ratio >= 0.25) d.heatClass = 'h2';
+    else d.heatClass = 'h1';
+  });
+
+  // 选出最旺吉日 Top 3
+  const topDays = [...daysList]
+    .filter(d => d.slotCount > 0)
+    .sort((a, b) => (b.heatScore - a.heatScore) || (b.slotCount - a.slotCount) || (b.l4Count - a.l4Count))
+    .slice(0, 3);
+
+  revState.lastScan = {
+    daysList,
+    allMatches,
+    topDays,
+    daysSpan: revState.days,
+    method: state.method
+  };
+  renderReverseResults();
+}
+
+function selectHeatmapDay(dayKey) {
+  revState.selectedDay = (revState.selectedDay === dayKey) ? null : dayKey;
+  revState.pageSize = 20;
+  renderReverseResults();
+}
+
+function setReverseSort(mode) {
+  revState.sortBy = mode;
+  renderReverseResults();
+}
+
+function loadMoreReverse() {
+  revState.pageSize += 20;
+  renderReverseResults();
+}
+
+function renderReverseResults() {
   const box = document.getElementById('rev-results');
-  if (!results.length) {
-    box.innerHTML = `<div class="card warn">未来 7 天内未找到满足该严苛条件的时段，可尝试切换为「宽松模式」或放宽吉门限制。</div>`;
+  const scan = revState.lastScan;
+  if (!box || !scan) return;
+
+  const { daysList, allMatches, topDays, daysSpan } = scan;
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+
+  // 1. 构建 7 列周一至周日的热力图网格
+  const firstDow = daysList.length ? ((daysList[0].weekday + 6) % 7) : 0; // 0=周一..6=周日
+  let cellsHtml = '';
+  for (let i = 0; i < firstDow; i++) {
+    cellsHtml += `<div class="hm-cell empty"></div>`;
+  }
+  daysList.forEach(d => {
+    const isSel = revState.selectedDay === d.dayKey;
+    const dayLabel = d.day === 1 ? `${d.month}/1` : String(d.day);
+    const cntLabel = d.slotCount > 0 ? `${d.slotCount}时` : '-';
+    const star = d.l4Count > 0 ? `<span class="hm-star">★</span>` : '';
+    cellsHtml += `
+      <div class="hm-cell ${d.heatClass} ${isSel ? 'selected' : ''}" onclick="selectHeatmapDay('${d.dayKey}')">
+        ${star}
+        <span class="hm-day-num">${dayLabel}</span>
+        <span class="hm-cnt">${cntLabel}</span>
+      </div>
+    `;
+  });
+
+  // 2. 最旺吉日快捷标签
+  const topHtml = topDays.length
+    ? `<div class="hm-topdays">
+         <span style="font-size:11px;color:var(--muted);align-self:center;">🏆 最旺吉日：</span>
+         ${topDays.map(d => `
+           <button type="button" class="hm-top-pill ${revState.selectedDay===d.dayKey?'sel':''}" onclick="selectHeatmapDay('${d.dayKey}')">
+             ${d.month}/${d.day}(${weekdays[d.weekday].slice(1)}) ${d.slotCount}时${d.l4Count?`·${d.l4Count}个L4`:''}
+           </button>
+         `).join('')}
+       </div>`
+    : '';
+
+  const totalGoodDays = daysList.filter(d => d.slotCount > 0).length;
+
+  let html = `
+    <div class="hm-card">
+      <div class="hm-top">
+        <span class="hm-title">🗓️ 未来 ${daysSpan} 天吉日热力图（${totalGoodDays}天有吉时 · 共${allMatches.length}条）</span>
+        <span class="hm-legend">
+          少
+          <i style="background:rgba(255,255,255,0.08)"></i>
+          <i style="background:rgba(16,185,129,0.22)"></i>
+          <i style="background:rgba(16,185,129,0.45)"></i>
+          <i style="background:linear-gradient(135deg,#10b981,#e2be67)"></i>
+          多(★含L4)
+        </span>
+      </div>
+      ${topHtml}
+      <div class="hm-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="hm-grid">${cellsHtml}</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:6px;text-align:center;">
+        点击上方任意日期格可筛选当天吉时，再次点击恢复全部
+      </div>
+    </div>
+  `;
+
+  // 3. 过滤 & 排序列表
+  let list = revState.selectedDay
+    ? (daysList.find(d => d.dayKey === revState.selectedDay)?.matches || [])
+    : allMatches;
+
+  list = [...list].sort((a, b) => {
+    if (revState.sortBy === 'tier') {
+      if (b.pd.eval.tier !== a.pd.eval.tier) return b.pd.eval.tier - a.pd.eval.tier;
+      if (b.pd.goodForms.length !== a.pd.goodForms.length) return b.pd.goodForms.length - a.pd.goodForms.length;
+      return a.ts - b.ts;
+    }
+    return a.ts - b.ts;
+  });
+
+  const selTitle = revState.selectedDay
+    ? `📅 ${revState.selectedDay}（共 ${list.length} 条）`
+    : `📋 全部符合吉时（共 ${list.length} 条）`;
+
+  html += `
+    <div class="res-toolbar">
+      <span><strong>${selTitle}</strong></span>
+      <div class="res-toolbar-btns">
+        ${revState.selectedDay ? `<button type="button" class="mini-btn" onclick="selectHeatmapDay(null)">显示全部</button>` : ''}
+        <button type="button" class="mini-btn ${revState.sortBy==='time'?'active':''}" onclick="setReverseSort('time')">按时间</button>
+        <button type="button" class="mini-btn ${revState.sortBy==='tier'?'active':''}" onclick="setReverseSort('tier')">按等级</button>
+      </div>
+    </div>
+  `;
+
+  if (!list.length) {
+    html += `<div class="card warn">${revState.selectedDay ? '当天无符合当前条件的吉时，可点击其他高亮日期或放宽筛选标准。' : '所选时间段内无符合条件的吉时，请尝试切换为「严苛净界」或「宽松模式」。'}</div>`;
+    box.innerHTML = html;
     return;
   }
 
-  const pad = n => (n < 10 ? '0' : '') + n;
-  const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
-  box.innerHTML = results.map((r, idx) => {
-    const d = r.time;
-    const h = d.getHours();
+  const visible = list.slice(0, revState.pageSize);
+  html += visible.map((r, idx) => {
+    const d = r.date;
+    const h = r.hour;
     const startH = h === 0 ? 23 : (h % 2 === 0 ? h - 1 : h);
     const endH = (startH + 2) % 24;
-    const labelTime = `${d.getMonth()+1}月${d.getDate()}日(${weekdays[d.getDay()]}) ${r.chart.bazi.hZhi}时 (${pad(startH)}:00-${pad(endH)}:00)`;
+    const labelTime = `${d.getMonth()+1}月${d.getDate()}日(${weekdays[d.getDay()]}) ${r.hZhi}时 ${pad(startH)}:00-${pad(endH)}:00`;
     const beh = STEM_BEHAVIOR[r.pd.heavenStem] || STEM_BEHAVIOR['戊'];
     return `
       <div class="card ${r.pd.eval.status}">
         <div class="card-title">
-          <span>#${idx+1} ${labelTime}</span>
+          <span style="font-size:12.5px">#${idx+1} ${labelTime}</span>
           <span class="level-badge" style="background:${r.pd.eval.color}">${r.pd.eval.label}</span>
         </div>
         <div style="font-size:12px;color:#d1d5db">
-          ${r.pd.dir} · ${r.pd.door} · ${r.pd.god} · ${r.pd.star} · ${r.pd.heavenStem}/${r.pd.earthStem}
-          ${r.pd.goodForms.length ? '<br>吉格：' + r.pd.goodForms.join('、') : ''}
+          <strong style="color:var(--gold)">${r.pd.dir}（${r.pd.gua}${r.pd.num}）</strong>· ${r.pd.door} · ${r.pd.god} · ${r.pd.star} · ${r.pd.heavenStem}/${r.pd.earthStem} · ${r.juText}
+          ${r.pd.goodForms.length ? '<br><span style="color:#6ee7b7">吉格：' + r.pd.goodForms.join('、') + '</span>' : ''}
         </div>
         <div class="mini-beh">
           <i class="color-dot" style="background:${beh.colorHex}"></i>${beh.colorName} ｜ ${beh.items.split('、').slice(0,2).join('、')}
         </div>
-        <button type="button" style="margin-top:8px;padding:5px 10px;border-radius:6px;border:1px solid var(--gold);background:rgba(226,190,103,0.16);color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;"
-          onclick="jumpToTime(${d.getTime()}, ${targetP})">🎯 切到此吉时并在罗盘指向${r.pd.dir}</button>
+        <button type="button" style="margin-top:7px;padding:5px 10px;border-radius:6px;border:1px solid var(--gold);background:rgba(226,190,103,0.16);color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;"
+          onclick="jumpToTime(${r.ts}, ${r.pd.num})">🎯 切到此吉时并在罗盘指向${r.pd.dir}</button>
       </div>
     `;
   }).join('');
+
+  if (list.length > visible.length) {
+    html += `<button type="button" class="btn-ghost" onclick="loadMoreReverse()">▼ 加载更多（已显示 ${visible.length} / ${list.length} 条）</button>`;
+  }
+
+  box.innerHTML = html;
 }
 
 function jumpToTime(ts, targetP) {
@@ -2115,6 +2434,7 @@ function applyCustomTime() {
   const val = document.getElementById('dt-input').value;
   if (val) {
     state.date = new Date(val);
+    revState.lastScan = null;
     recomputeAndRender();
   }
   closeModal();
@@ -2125,6 +2445,7 @@ function stepHour(delta) {
 }
 function resetToNow() {
   state.date = new Date();
+  revState.lastScan = null;
   recomputeAndRender();
 }
 
@@ -2148,6 +2469,7 @@ function initInteractions() {
       document.querySelectorAll('#method-seg button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.method = btn.dataset.m;
+      revState.lastScan = null;
       recomputeAndRender();
     };
   });
