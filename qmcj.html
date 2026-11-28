@@ -1,0 +1,2840 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>奇门催局 · 5环 AR 布局罗盘</title>
+<!-- 优先读取同目录离线 lunar.js，失败自动回退 CDN -->
+<script src="./lunar.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.12/lunar.min.js';s.onload=function(){window.__onLunarReady&&window.__onLunarReady();};document.head.appendChild(s);"></script>
+<style>
+  :root {
+    --bg: #070b14;
+    --panel: rgba(11, 17, 30, 0.86);
+    --panel-solid: #0c1322;
+    --border: rgba(212, 175, 55, 0.34);
+    --gold: #e2be67;
+    --text: #f3f4f6;
+    --muted: #9ca3af;
+    --t3: #10b981;
+    --t2: #22d3ee;
+    --t1: #84cc16;
+    --recv: #60a5fa;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  /* 摄像头底层 */
+  #camera-video {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; z-index: 0; display: none;
+    filter: brightness(0.76) contrast(1.05);
+  }
+  #camera-video.active { display: block; }
+  #bg-grid {
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(circle at 50% 48%, rgba(28, 45, 78, 0.55) 0%, rgba(7, 11, 20, 0.96) 72%),
+      linear-gradient(rgba(226,190,103,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(226,190,103,0.04) 1px, transparent 1px);
+    background-size: 100% 100%, 36px 36px, 36px 36px;
+    transition: opacity .3s;
+  }
+  #bg-grid.ar-on { opacity: 0.25; }
+
+  /* 顶部 HUD */
+  .top-hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    padding: calc(env(safe-area-inset-top, 8px) + 6px) 10px 8px;
+    background: linear-gradient(180deg, rgba(7,11,20,0.94) 0%, rgba(7,11,20,0.72) 82%, transparent 100%);
+    pointer-events: none;
+  }
+  .top-hud > * { pointer-events: auto; }
+  .hud-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  }
+  .hud-left-group { display: flex; align-items: center; gap: 6px; }
+  .brand-pill {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--gold);
+    backdrop-filter: blur(8px);
+  }
+  .diag-trigger {
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--gold); border-radius: 999px; padding: 4px 8px;
+    font-size: 11px; font-weight: 700; cursor: pointer; backdrop-filter: blur(8px);
+  }
+  .method-seg {
+    display: flex; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; overflow: hidden; backdrop-filter: blur(8px);
+  }
+  .method-seg button {
+    background: none; border: none; color: var(--muted);
+    padding: 4px 8px; font-size: 11px; cursor: pointer; font-weight: 600;
+  }
+  .method-seg button.active { background: var(--gold); color: #111827; }
+
+  /* 催局类型快捷切换条 */
+  .cuiju-bar {
+    margin-top: 6px; display: flex; gap: 6px; align-items: center;
+  }
+  .cuiju-bar select {
+    flex: 1; background: var(--panel); color: var(--gold);
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 5px 8px; font-size: 12px; font-weight: 700; backdrop-filter: blur(8px);
+  }
+  .cuiju-bar select.gender-sel { flex: 0 0 92px; color: #e5e7eb; display: none; }
+  .cuiju-bar select.gender-sel.show { display: block; }
+
+  .meta-bar {
+    margin-top: 5px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+    font-size: 11px; color: #d1d5db;
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 9px; padding: 4px 9px; backdrop-filter: blur(8px);
+  }
+  .meta-bar .bazi { color: var(--gold); font-weight: 700; letter-spacing: 0.4px; }
+  .meta-bar .tag-bad {
+    background: rgba(239,68,68,0.22); border: 1px solid var(--bad);
+    color: #fca5a5; padding: 1px 6px; border-radius: 4px; font-weight: 700;
+  }
+
+  /* 准星实时朝向卡片 */
+  .heading-card {
+    margin-top: 5px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: rgba(10, 16, 28, 0.88); border: 1px solid var(--border);
+    border-radius: 12px; padding: 6px 10px; backdrop-filter: blur(10px);
+    cursor: pointer;
+  }
+  .heading-left { display: flex; align-items: baseline; gap: 6px; }
+  .heading-deg { font-size: 21px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+  .heading-dir { font-size: 12px; color: var(--gold); font-weight: 700; }
+  .heading-right { text-align: right; font-size: 11px; line-height: 1.35; max-width: 56%; }
+  .level-badge {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-weight: 800; font-size: 10.5px; color: #09101c;
+  }
+  .crack-warn {
+    margin-top: 4px; font-size: 11px; color: #fde68a; background: rgba(245,158,11,0.2);
+    border: 1px solid rgba(245,158,11,0.6); border-radius: 6px; padding: 3px 8px;
+    text-align: center; display: none;
+  }
+  .crack-warn.show { display: block; }
+  .https-banner {
+    display: none; margin-top: 4px; font-size: 11px; color: #fca5a5;
+    background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.5);
+    border-radius: 6px; padding: 3px 8px; text-align: center;
+  }
+  .https-banner.show { display: block; }
+
+  /* 罗盘舞台 */
+  .compass-stage {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    padding-top: 136px; padding-bottom: 128px;
+    touch-action: none;
+  }
+  .compass-shell {
+    position: relative;
+    width: min(92vw, 58vh, 500px);
+    height: min(92vw, 58vh, 500px);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.35s ease;
+  }
+  .compass-shell.tilt-3d {
+    transform: perspective(900px) rotateX(28deg) scale(1.03);
+  }
+
+  /* 固定准星与天心十道 */
+  .lubber-line {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    z-index: 12; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .lubber-tri {
+    width: 0; height: 0;
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-top: 13px solid #ef4444;
+    filter: drop-shadow(0 0 6px rgba(239,68,68,0.85));
+  }
+  .lubber-stem {
+    width: 2px; height: 48%; position: absolute; top: 4px; left: 50%;
+    transform: translateX(-50%); background: linear-gradient(180deg, rgba(239,68,68,0.85), rgba(239,68,68,0.1));
+    pointer-events: none; z-index: 11;
+  }
+  .crosshair-h {
+    position: absolute; left: 4%; right: 4%; top: 50%; height: 1px;
+    background: rgba(239,68,68,0.22); pointer-events: none; z-index: 11;
+  }
+
+  #compass-svg {
+    width: 100%; height: 100%; overflow: visible;
+    filter: drop-shadow(0 8px 26px rgba(0,0,0,0.65));
+  }
+  #wheel-group { transform-origin: 0 0; }
+  .palace-hit { cursor: pointer; transition: opacity .15s; }
+  .palace-hit:hover { opacity: 0.88; }
+
+  /* 底部工具坞 */
+  .bottom-dock {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    padding: 6px 10px calc(env(safe-area-inset-bottom, 8px) + 8px);
+    background: linear-gradient(0deg, rgba(7,11,20,0.96) 0%, rgba(7,11,20,0.84) 75%, transparent 100%);
+  }
+  .ring-toggles {
+    display: flex; gap: 5px; overflow-x: auto; padding-bottom: 6px;
+    scrollbar-width: none;
+  }
+  .ring-toggles::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; background: var(--panel); border: 1px solid rgba(255,255,255,0.16);
+    color: var(--muted); border-radius: 999px; padding: 4px 9px; font-size: 11px;
+    cursor: pointer; font-weight: 600; backdrop-filter: blur(8px);
+  }
+  .chip.on {
+    border-color: var(--gold); color: var(--gold);
+    background: rgba(226, 190, 103, 0.16);
+  }
+
+  .sim-bar {
+    display: none; align-items: center; gap: 8px; margin-bottom: 6px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px 10px; font-size: 11px; color: var(--gold);
+  }
+  .sim-bar.show { display: flex; }
+  .sim-bar input[type=range] { flex: 1; accent-color: var(--gold); }
+
+  .time-row { display: flex; gap: 5px; margin-bottom: 6px; }
+  .time-row button {
+    flex: 1; background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
+    color: var(--text); border-radius: 8px; padding: 5px 4px; font-size: 11px;
+    cursor: pointer; font-weight: 600;
+  }
+  .time-row button.now-btn { color: var(--gold); border-color: var(--border); }
+
+  .action-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .dock-btn {
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
+    color: var(--text); border-radius: 10px; padding: 7px 4px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    backdrop-filter: blur(8px);
+  }
+  .dock-btn.primary {
+    background: linear-gradient(135deg, #c4a352, #e2be67);
+    color: #0b111e; border-color: #e2be67;
+  }
+  .dock-btn.active { border-color: var(--t3); color: var(--t3); }
+  .dock-btn span.ico { font-size: 14px; line-height: 1; }
+
+  /* 通用抽屉弹窗 */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.64);
+    display: none; align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-backdrop.open { display: flex; }
+  .sheet {
+    width: 100%; max-width: 540px; max-height: 86vh;
+    background: var(--panel-solid); border: 1px solid var(--border);
+    border-bottom: none; border-radius: 18px 18px 0 0;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 -10px 35px rgba(0,0,0,0.6);
+  }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 16px; border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .sheet-head h3 { margin: 0; font-size: 15px; color: var(--gold); }
+  .sheet-close {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.06); color: #fff; cursor: pointer; font-size: 14px;
+  }
+  .sheet-body {
+    padding: 12px 16px 26px; overflow-y: auto; font-size: 13px; line-height: 1.6;
+  }
+  .tab-bar { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tab-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.04); color: var(--muted); font-weight: 700; font-size: 12px; cursor: pointer;
+  }
+  .tab-btn.active { background: var(--gold); color: #0b111e; border-color: var(--gold); }
+
+  .card {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .card.good { border-color: rgba(16,185,129,0.52); background: rgba(16,185,129,0.08); }
+  .card.recv { border-color: rgba(96,165,250,0.5); background: rgba(96,165,250,0.08); }
+  .card.warn { border-color: rgba(245,158,11,0.48); background: rgba(245,158,11,0.08); }
+  .card.bad { border-color: rgba(239,68,68,0.45); background: rgba(239,68,68,0.07); }
+  .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 4px; gap: 6px; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .pill {
+    font-size: 11px; padding: 2px 7px; border-radius: 999px;
+    background: rgba(255,255,255,0.08); color: #e5e7eb;
+  }
+  .pill.g { background: rgba(16,185,129,0.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); }
+  .pill.b { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+  .pill.y { background: rgba(226,190,103,0.2); color: #fde68a; border: 1px solid rgba(226,190,103,0.45); }
+  .pill.c { background: rgba(96,165,250,0.2); color: #bfdbfe; border: 1px solid rgba(96,165,250,0.45); }
+
+  .color-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.55); vertical-align: middle; margin-right: 4px;
+  }
+  .mini-beh {
+    margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.12);
+    font-size: 11.5px; color: #cbd5e1;
+  }
+
+  .form-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+  .form-row label { font-size: 12px; color: var(--muted); min-width: 58px; }
+  .form-row select, .form-row input {
+    flex: 1; background: #141d31; color: #fff; border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px; padding: 7px 10px; font-size: 12.5px;
+  }
+  .form-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .form-row-2col select {
+    width: 100%; background: #141d31; color: #fff; border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px; padding: 7px 8px; font-size: 12px;
+  }
+  .btn-full {
+    width: 100%; padding: 10px; border-radius: 10px; border: none;
+    background: linear-gradient(135deg, #c4a352, #e2be67); color: #0b111e;
+    font-weight: 800; font-size: 13px; cursor: pointer;
+  }
+  .btn-ghost {
+    width: 100%; padding: 8px; border-radius: 9px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.18);
+    color: var(--gold); font-weight: 700; font-size: 12px; margin-top: 4px;
+  }
+
+  /* 日历热力图 */
+  .hm-card {
+    background: rgba(15, 23, 42, 0.72); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 10px 12px; margin-bottom: 10px;
+  }
+  .hm-top {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; gap: 6px; flex-wrap: wrap;
+  }
+  .hm-title { font-size: 12.5px; font-weight: 800; color: var(--gold); }
+  .hm-legend { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--muted); }
+  .hm-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+  .hm-topdays { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .hm-top-pill {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+    background: rgba(16,185,129,0.18); border: 1px solid rgba(16,185,129,0.5);
+    color: #6ee7b7; font-weight: 700;
+  }
+  .hm-top-pill.sel { background: var(--gold); color: #0b111e; border-color: var(--gold); }
+  .hm-weekdays {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    text-align: center; font-size: 10px; color: var(--muted); margin-bottom: 4px;
+  }
+  .hm-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .hm-cell {
+    position: relative; border-radius: 7px; padding: 5px 2px 4px;
+    text-align: center; cursor: pointer; min-height: 42px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,0.06); transition: transform .12s;
+  }
+  .hm-cell.empty { background: transparent; border: none; cursor: default; }
+  .hm-cell.h0 { background: rgba(255,255,255,0.03); color: #6b7280; }
+  .hm-cell.h1 { background: rgba(16,185,129,0.16); color: #a7f3d0; border-color: rgba(16,185,129,0.28); }
+  .hm-cell.h2 { background: rgba(16,185,129,0.32); color: #ecfdf5; border-color: rgba(16,185,129,0.5); }
+  .hm-cell.h3 { background: rgba(16,185,129,0.52); color: #ffffff; border-color: rgba(52,211,153,0.75); }
+  .hm-cell.h4 { background: linear-gradient(135deg, rgba(16,185,129,0.8), rgba(226,190,103,0.55)); color: #ffffff; border-color: #fde68a; }
+  .hm-cell.selected { outline: 2px solid var(--gold); transform: scale(1.05); z-index: 2; }
+  .hm-day-num { font-size: 11px; font-weight: 800; line-height: 1.1; }
+  .hm-cnt { font-size: 9.5px; opacity: 0.92; margin-top: 2px; line-height: 1; }
+  .hm-star { position: absolute; top: 2px; right: 3px; font-size: 8px; color: #fde68a; line-height: 1; }
+
+  .res-toolbar {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    margin: 8px 0; flex-wrap: wrap; font-size: 11.5px; color: #d1d5db;
+  }
+  .res-toolbar-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+  .mini-btn {
+    padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.05); color: #d1d5db;
+  }
+  .mini-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(226,190,103,0.16); }
+
+  /* 传感器诊断与磁偏校准抽屉 */
+  .diag-backdrop {
+    position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.68);
+    display: none; align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(5px);
+  }
+  .diag-backdrop.open { display: flex; }
+  .diag-sheet {
+    width: 100%; max-width: 520px; max-height: 86vh; overflow-y: auto;
+    background: #0d131f; border: 1px solid var(--border); border-bottom: none;
+    border-radius: 18px 18px 0 0; padding: 16px 16px 24px;
+    box-shadow: 0 -10px 35px rgba(0,0,0,0.7);
+  }
+  .diag-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .diag-head h3 { margin: 0; font-size: 16px; color: var(--gold); font-weight: 700; }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .diag-box {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .diag-box .k { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .diag-box .v { font-size: 16px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .diag-slider-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: #d1d5db; margin-bottom: 6px;
+  }
+  .diag-slider-row .val { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+  #diag-dec-slider { width: 100%; accent-color: var(--gold); margin-bottom: 14px; }
+  .diag-sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .diag-ch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .diag-ch-btn {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.14);
+    color: #e5e7eb; border-radius: 9px; padding: 10px 8px;
+    font-size: 12px; font-weight: 600; cursor: pointer; text-align: center;
+  }
+  .diag-ch-btn.full { grid-column: 1 / -1; }
+  .diag-ch-btn.active {
+    background: rgba(16, 185, 129, 0.22); border-color: #10b981; color: #6ee7b7;
+  }
+  .diag-waterfall-btn {
+    width: 100%; padding: 11px; border-radius: 10px; cursor: pointer;
+    background: rgba(226, 190, 103, 0.14); border: 1px solid var(--gold);
+    color: var(--gold); font-size: 13px; font-weight: 700; margin-bottom: 12px;
+  }
+  .diag-foot { font-size: 11px; color: var(--muted); line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<video id="camera-video" autoplay playsinline muted></video>
+<div id="bg-grid"></div>
+
+<!-- 顶部 HUD -->
+<div class="top-hud">
+  <div class="hud-header">
+    <div class="hud-left-group">
+      <div class="brand-pill">🏮 奇门催局 AR</div>
+      <button class="diag-trigger" type="button" onclick="openDiagModal()">⚙️ 诊断校准</button>
+    </div>
+    <div class="method-seg" id="method-seg">
+      <button type="button" data-m="ZhiRun" class="active">置闰</button>
+      <button type="button" data-m="ChaiBu">拆补</button>
+      <button type="button" data-m="YinPan">阴盘</button>
+    </div>
+  </div>
+
+  <!-- 9 大催局类型切换 -->
+  <div class="cuiju-bar">
+    <select id="cuiju-type-sel" onchange="onCuijuTypeChange(this.value)">
+      <option value="8">Type 8 · 九星催财法（生门/戊/正偏财/长生禄）</option>
+      <option value="1">Type 1 · 催贵人（值符/九天/天辅）</option>
+      <option value="3">Type 3 · 催官升迁（值符/九天/开门）</option>
+      <option value="9">Type 9 · 高级催文昌（长生/太阴/双测）</option>
+      <option value="7">Type 7 · 基础催文昌/考试（景门/天辅/丁奇）</option>
+      <option value="5">Type 5 · 催桃花·单身（六合/休门）</option>
+      <option value="6">Type 6 · 催合和·已婚（日干五合夫妻宫）</option>
+      <option value="4">Type 4 · 催债追款（戊财/月干欠债人）</option>
+      <option value="2">Type 2 · 催丁求子（时干/胎位/无四害）</option>
+    </select>
+    <select id="cuiju-gender-sel" class="gender-sel" onchange="onGenderChange(this.value)">
+      <option value="any">不限男女</option>
+      <option value="male">求男(丁)</option>
+      <option value="female">求女(癸)</option>
+    </select>
+  </div>
+
+  <div class="meta-bar" id="meta-bar">
+    <span>正在初始化历法引擎...</span>
+  </div>
+
+  <div class="heading-card" id="heading-card" onclick="openCurrentPalaceDetail()">
+    <div class="heading-left">
+      <span class="heading-deg" id="hud-deg">000.0°</span>
+      <div>
+        <div class="heading-dir" id="hud-dir">正北 · 坎1宫</div>
+        <div style="font-size:11px;color:var(--muted)" id="hud-sub">子山 · 子宫</div>
+      </div>
+    </div>
+    <div class="heading-right" id="hud-eval">
+      <div>等待排盘...</div>
+    </div>
+  </div>
+
+  <div class="crack-warn" id="crack-warn">⚠️ 当前接近八卦界线（大空亡缝），室内催局摆件建议微调避开</div>
+  <div class="https-banner" id="https-banner">⚠️ 非 HTTPS 环境，浏览器可能限制相机或磁感罗盘，已自动开放手动模拟</div>
+</div>
+
+<!-- 中央 5-Ring 罗盘 -->
+<div class="compass-stage" id="compass-stage">
+  <div class="compass-shell" id="compass-shell">
+    <div class="lubber-line"><div class="lubber-tri"></div></div>
+    <div class="lubber-stem"></div>
+    <div class="crosshair-h"></div>
+    <svg id="compass-svg" viewBox="0 0 1000 1000">
+      <defs>
+        <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#1e293b" stop-opacity="0.92"/>
+          <stop offset="100%" stop-color="#090f1d" stop-opacity="0.96"/>
+        </radialGradient>
+      </defs>
+      <g id="wheel-group">
+        <g id="ring5-24shan"></g>
+        <g id="ring4-12zhi"></g>
+        <g id="ring3-trigger"></g>
+        <g id="ring2-cuiju"></g>
+        <g id="ring1-qimen"></g>
+      </g>
+      <g id="center-hub"></g>
+    </svg>
+  </div>
+</div>
+
+<!-- 底部控制坞 -->
+<div class="bottom-dock">
+  <div class="sim-bar" id="sim-bar">
+    <span>手动旋转</span>
+    <input type="range" id="sim-slider" min="0" max="359.5" step="0.5" value="0">
+    <span id="sim-val">0°</span>
+  </div>
+
+  <div class="ring-toggles" id="ring-toggles">
+    <button type="button" class="chip on" data-ring="ring1">R1 奇门盘</button>
+    <button type="button" class="chip on" data-ring="ring2">R2 催局评级</button>
+    <button type="button" class="chip on" data-ring="ring3">R3 触发/物象</button>
+    <button type="button" class="chip on" data-ring="ring4">R4 12支/长生禄</button>
+    <button type="button" class="chip on" data-ring="ring5">R5 24山</button>
+    <button type="button" class="chip" id="btn-label-mode" onclick="toggleLabelMode()">R3: 催局用神</button>
+    <button type="button" class="chip" id="btn-tilt" onclick="toggleTilt3D()">3D 倾角</button>
+  </div>
+
+  <div class="time-row">
+    <button type="button" onclick="stepHour(-2)">◀ 上时辰</button>
+    <button type="button" class="now-btn" onclick="resetToNow()">⚡ 当下</button>
+    <button type="button" onclick="stepHour(2)">下时辰 ▶</button>
+    <button type="button" onclick="openTimeModal()">📅 自选时间</button>
+  </div>
+
+  <div class="action-row">
+    <button type="button" class="dock-btn" id="btn-camera" onclick="toggleCamera()">
+      <span class="ico">📷</span><span>AR相机</span>
+    </button>
+    <button type="button" class="dock-btn" id="btn-sensor" onclick="toggleSensorMode()">
+      <span class="ico">🧲</span><span id="sensor-lbl">手动中</span>
+    </button>
+    <button type="button" class="dock-btn primary" onclick="openCuijuModal('scanner')">
+      <span class="ico">🔥</span><span>择时热力图</span>
+    </button>
+    <button type="button" class="dock-btn" onclick="openCuijuModal('now_all')">
+      <span class="ico">📡</span><span>当下可催</span>
+    </button>
+    <button type="button" class="dock-btn" onclick="openCurrentPalaceDetail()">
+      <span class="ico">📖</span><span>本宫详批</span>
+    </button>
+  </div>
+</div>
+
+<!-- 通用底部抽屉 -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="if(event.target===this)closeModal()">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3 id="modal-title">详情</h3>
+      <button type="button" class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="sheet-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- 传感器诊断与磁偏校准抽屉 -->
+<div class="diag-backdrop" id="diag-backdrop" onclick="if(event.target===this)closeDiagModal()">
+  <div class="diag-sheet">
+    <div class="diag-head">
+      <h3>传感器诊断与磁偏校准</h3>
+      <button type="button" class="sheet-close" onclick="closeDiagModal()">✕</button>
+    </div>
+
+    <div class="diag-grid">
+      <div class="diag-box">
+        <div class="k">当前活跃通道</div>
+        <div class="v" id="diag-channel">simulation</div>
+      </div>
+      <div class="diag-box">
+        <div class="k">采样频率 (Hz)</div>
+        <div class="v" id="diag-hz">0.0 Hz</div>
+      </div>
+      <div class="diag-box">
+        <div class="k">倾角矩阵 R22</div>
+        <div class="v" id="diag-r22">1.000</div>
+      </div>
+      <div class="diag-box">
+        <div class="k">原始角 / 补偿角</div>
+        <div class="v" id="diag-angles">0.0° / 0.0°</div>
+      </div>
+    </div>
+
+    <div class="diag-slider-row">
+      <span>磁偏角人工微调 (-30° ~ +30°)</span>
+      <span class="val" id="diag-dec-val">+0.0°</span>
+    </div>
+    <input type="range" id="diag-dec-slider" min="-30" max="30" step="0.5" value="0">
+
+    <div class="diag-sub">强制测试通道（严格单源互斥切换）</div>
+    <div class="diag-ch-grid" id="diag-ch-grid">
+      <button type="button" class="diag-ch-btn" data-ch="absSensor" onclick="forceSensorChannel('absSensor')">1. AbsoluteOrientation</button>
+      <button type="button" class="diag-ch-btn" data-ch="orientationabsolute" onclick="forceSensorChannel('orientationabsolute')">2. orientationabsolute</button>
+      <button type="button" class="diag-ch-btn" data-ch="deviceorientation" onclick="forceSensorChannel('deviceorientation')">3. deviceorientation</button>
+      <button type="button" class="diag-ch-btn" data-ch="webkitCompass" onclick="forceSensorChannel('webkitCompass')">4. webkitCompass</button>
+      <button type="button" class="diag-ch-btn full active" data-ch="simulation" onclick="forceSensorChannel('simulation')">5. 手动模拟模式 (Simulation)</button>
+    </div>
+
+    <button type="button" class="diag-waterfall-btn" onclick="runAutoWaterfall()">↺ 重新运行自动瀑布流检测</button>
+    <div class="diag-foot" id="diag-foot"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+ * 一、空间几何字典（12地支 30° / 24山 15° / 8宫 45°）
+ * ============================================================================ */
+const PALACE_META = {
+  1: { num:1, gua:'坎', dir:'正北', center:0,   elem:'水', zhi:['子'],     shan:['壬','子','癸'], star:'天蓬', door:'休门' },
+  8: { num:8, gua:'艮', dir:'东北', center:45,  elem:'土', zhi:['丑','寅'], shan:['丑','艮','寅'], star:'天任', door:'生门' },
+  3: { num:3, gua:'震', dir:'正东', center:90,  elem:'木', zhi:['卯'],     shan:['甲','卯','乙'], star:'天冲', door:'伤门' },
+  4: { num:4, gua:'巽', dir:'东南', center:135, elem:'木', zhi:['辰','巳'], shan:['辰','巽','巳'], star:'天辅', door:'杜门' },
+  9: { num:9, gua:'离', dir:'正南', center:180, elem:'火', zhi:['午'],     shan:['丙','午','丁'], star:'天英', door:'景门' },
+  2: { num:2, gua:'坤', dir:'西南', center:225, elem:'土', zhi:['未','申'], shan:['未','坤','申'], star:'天芮', door:'死门' },
+  7: { num:7, gua:'兑', dir:'正西', center:270, elem:'金', zhi:['酉'],     shan:['庚','酉','辛'], star:'天柱', door:'惊门' },
+  6: { num:6, gua:'乾', dir:'西北', center:315, elem:'金', zhi:['戌','亥'], shan:['戌','乾','亥'], star:'天心', door:'开门' },
+  5: { num:5, gua:'中', dir:'中央', center:null,elem:'土', zhi:[],         shan:[],               star:'天禽', door:'死门' }
+};
+const RING_ORDER = [1, 8, 3, 4, 9, 2, 7, 6];
+
+const ZHI_12 = [
+  { name:'子', center:0,   dir:'正北',   palace:1 },
+  { name:'丑', center:30,  dir:'北偏东', palace:8 },
+  { name:'寅', center:60,  dir:'东偏北', palace:8 },
+  { name:'卯', center:90,  dir:'正东',   palace:3 },
+  { name:'辰', center:120, dir:'东偏南', palace:4 },
+  { name:'巳', center:150, dir:'南偏东', palace:4 },
+  { name:'午', center:180, dir:'正南',   palace:9 },
+  { name:'未', center:210, dir:'南偏西', palace:2 },
+  { name:'申', center:240, dir:'西偏南', palace:2 },
+  { name:'酉', center:270, dir:'正西',   palace:7 },
+  { name:'戌', center:300, dir:'西偏北', palace:6 },
+  { name:'亥', center:330, dir:'北偏西', palace:6 }
+];
+
+const SHAN_24 = [
+  { name:'子', center:0,   palace:1, type:'zhi' },
+  { name:'癸', center:15,  palace:1, type:'gan' },
+  { name:'丑', center:30,  palace:8, type:'zhi' },
+  { name:'艮', center:45,  palace:8, type:'gua' },
+  { name:'寅', center:60,  palace:8, type:'zhi' },
+  { name:'甲', center:75,  palace:3, type:'gan' },
+  { name:'卯', center:90,  palace:3, type:'zhi' },
+  { name:'乙', center:105, palace:3, type:'gan' },
+  { name:'辰', center:120, palace:4, type:'zhi' },
+  { name:'巽', center:135, palace:4, type:'gua' },
+  { name:'巳', center:150, palace:4, type:'zhi' },
+  { name:'丙', center:165, palace:9, type:'gan' },
+  { name:'午', center:180, palace:9, type:'zhi' },
+  { name:'丁', center:195, palace:9, type:'gan' },
+  { name:'未', center:210, palace:2, type:'zhi' },
+  { name:'坤', center:225, palace:2, type:'gua' },
+  { name:'申', center:240, palace:2, type:'zhi' },
+  { name:'庚', center:255, palace:7, type:'gan' },
+  { name:'酉', center:270, palace:7, type:'zhi' },
+  { name:'辛', center:285, palace:7, type:'gan' },
+  { name:'戌', center:300, palace:6, type:'zhi' },
+  { name:'乾', center:315, palace:6, type:'gua' },
+  { name:'亥', center:330, palace:6, type:'zhi' },
+  { name:'壬', center:345, palace:1, type:'gan' }
+];
+const GUA_BOUNDARIES = [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5];
+
+/* ============================================================================
+ * 二、奇门催局核心辞典（100% 对齐 qimen_cuiju.txt 规则 + 室内布局参考）
+ * ============================================================================ */
+const JQ_ORDER = [
+  '冬至','小寒','大寒','立春','雨水','惊蛰','春分','清明','谷雨','立夏','小满','芒种',
+  '夏至','小暑','大暑','立秋','处暑','白露','秋分','寒露','霜降','立冬','小雪','大雪'
+];
+const JQ_TABLE = {
+  '冬至':{yang:true, ju:[1,7,4]}, '小寒':{yang:true, ju:[2,8,5]}, '大寒':{yang:true, ju:[3,9,6]},
+  '立春':{yang:true, ju:[8,5,2]}, '雨水':{yang:true, ju:[9,6,3]}, '惊蛰':{yang:true, ju:[1,7,4]},
+  '春分':{yang:true, ju:[3,9,6]}, '清明':{yang:true, ju:[4,1,7]}, '谷雨':{yang:true, ju:[5,2,8]},
+  '立夏':{yang:true, ju:[4,1,7]}, '小满':{yang:true, ju:[5,2,8]}, '芒种':{yang:true, ju:[6,3,9]},
+  '夏至':{yang:false,ju:[9,3,6]}, '小暑':{yang:false,ju:[8,2,5]}, '大暑':{yang:false,ju:[7,1,4]},
+  '立秋':{yang:false,ju:[2,5,8]}, '处暑':{yang:false,ju:[1,4,7]}, '白露':{yang:false,ju:[9,3,6]},
+  '秋分':{yang:false,ju:[7,1,4]}, '寒露':{yang:false,ju:[6,9,3]}, '霜降':{yang:false,ju:[5,8,2]},
+  '立冬':{yang:false,ju:[6,9,3]}, '小雪':{yang:false,ju:[5,8,2]}, '大雪':{yang:false,ju:[4,7,1]}
+};
+const STEM_SEQ = ['戊','己','庚','辛','壬','癸','丁','丙','乙'];
+const XUN_HEAD_STEM = { '甲子':'戊','甲戌':'己','甲申':'庚','甲午':'辛','甲辰':'壬','甲寅':'癸' };
+const GODS_FULL = ['值符','腾蛇','太阴','六合','白虎','玄武','九地','九天'];
+const GODS_SHORT = ['符','蛇','阴','合','虎','玄','地','天'];
+const OVERCOMES = { '甲':'戊','乙':'己','丙':'庚','丁':'辛','戊':'壬','己':'癸','庚':'甲','辛':'乙','壬':'丙','癸':'丁' };
+const COMBINES = { '甲':'己','己':'甲','乙':'庚','庚':'乙','丙':'辛','辛':'丙','丁':'壬','壬':'丁','戊':'癸','癸':'戊' };
+const PRODUCES = { '水':'木','木':'火','火':'土','土':'金','金':'水' };
+const ELEM_KE = { '水':'火','火':'金','金':'木','木':'土','土':'水' };
+const ZHI_TO_PALACE = { '子':1,'丑':8,'寅':8,'卯':3,'辰':4,'巳':4,'午':9,'未':2,'申':2,'酉':7,'戌':6,'亥':6 };
+const MA_XING_ZHI = {
+  '申':'寅','子':'寅','辰':'寅',
+  '寅':'申','午':'申','戌':'申',
+  '巳':'亥','酉':'亥','丑':'亥',
+  '亥':'巳','卯':'巳','未':'巳'
+};
+const DOOR_ELEM = { '休门':'水','生门':'土','伤门':'木','杜门':'木','景门':'火','死门':'土','惊门':'金','开门':'金' };
+const JIXING_MAP = { '戊':3, '己':2, '庚':8, '辛':9, '壬':4, '癸':4 };
+const RUME_MAP = { '乙':[6], '丙':[6], '戊':[6], '丁':[8], '己':[8], '庚':[8], '辛':[4], '壬':[4], '癸':[2] };
+
+// 催局专用核心字典（对齐 qimen_cuiju.txt）
+const STEM_TAI_PALACE = { '甲':7, '乙':2, '丙':1, '丁':6, '戊':1, '己':6, '庚':3, '辛':8, '壬':9, '癸':4 };
+
+const DAY_WEALTH = {
+  '甲': { zheng: '己', pian: '戊' }, '乙': { zheng: '戊', pian: '己' },
+  '丙': { zheng: '辛', pian: '庚' }, '丁': { zheng: '庚', pian: '辛' },
+  '戊': { zheng: '癸', pian: '壬' }, '己': { zheng: '壬', pian: '癸' },
+  '庚': { zheng: '乙', pian: '甲' }, '辛': { zheng: '甲', pian: '乙' },
+  '壬': { zheng: '丁', pian: '丙' }, '癸': { zheng: '丙', pian: '丁' }
+};
+
+const SHIER_CHANGSHENG = {
+  '甲': { '长生': '亥', '临官': '寅' }, '乙': { '长生': '午', '临官': '卯' },
+  '丙': { '长生': '寅', '临官': '巳' }, '丁': { '长生': '酉', '临官': '午' },
+  '戊': { '长生': '寅', '临官': '巳' }, '己': { '长生': '酉', '临官': '午' },
+  '庚': { '长生': '巳', '临官': '申' }, '辛': { '长生': '子', '临官': '酉' },
+  '壬': { '长生': '申', '临官': '亥' }, '癸': { '长生': '卯', '临官': '子' }
+};
+
+const STAR_DE_DI = {
+  4: ['天蓬', '天辅', '天冲'],
+  9: ['天辅', '天冲', '天英'],
+  2: ['天英', '天芮', '天任'],
+  3: ['天蓬', '天辅', '天冲'],
+  7: ['天芮', '天任', '天柱', '天心'],
+  8: ['天英', '天芮', '天任'],
+  1: ['天任', '天蓬', '天柱', '天心'],
+  6: ['天芮', '天任', '天柱', '天心']
+};
+
+const STAR_DE_SHI = {
+  '天蓬': ['亥', '子', '寅', '卯'],
+  '天任': ['申', '酉', '戌', '辰', '丑', '未'],
+  '天芮': ['申', '酉', '戌', '辰', '丑', '未'],
+  '天辅': ['寅', '卯', '巳', '午'],
+  '天冲': ['寅', '卯', '巳', '午'],
+  '天英': ['巳', '午', '戌', '辰', '丑', '未'],
+  '天柱': ['申', '酉', '亥', '子'],
+  '天心': ['申', '酉', '亥', '子']
+};
+
+const CUIJU_TYPES = {
+  1: { name:'催贵人', short:'催贵', icon:'👑', tip:'寻值符/九天/天辅落宫生比日干，在该方位清理整洁并放置高雅/贵人意象物或静坐观想。' },
+  2: { name:'催丁求子', short:'催丁', icon:'👶', tip:'时干生比日干且宫内见「胎」位，优先选择六大关键宫位（时/日/辛/丙/芮/合）全无四害之极品局。' },
+  3: { name:'催官升迁', short:'催官', icon:'🏛️', tip:'寻值符/九天/开门落宫生比日干，利在对应宫位摆放事业晋升象征物或于此办公决策。' },
+  4: { name:'催债追款', short:'催债', icon:'💳', tip:'看戊（财）与月干（欠债方）落宫生旺日干，或日干克制月干，可于对应方位联系催收。' },
+  5: { name:'催桃花(单身)', short:'桃花', icon:'🌸', tip:'寻六合/休门落宫生比日干，适合于此方位摆放鲜花/柔和饰品或主动开启社交邀约。' },
+  6: { name:'催合和(已婚)', short:'合和', icon:'💞', tip:'看日干与五合干同宫或两宫相生，于合干宫摆放成对温馨物件或共同在场互动沟通。' },
+  7: { name:'基础催文昌', short:'文昌', icon:'📚', tip:'寻景门/天辅/丁奇生比日干，适合于此方位设书桌、点亮明灯或摆放文具典籍。' },
+  8: { name:'九星催财法', short:'催财', icon:'💰', tip:'汇集生门/戊/正偏财/长生/禄位生比日干，且优先九星「得地+得时」的旺相宫位引动财气。' },
+  9: { name:'高级催文昌(双测)', short:'高文昌', icon:'🎓', tip:'同时测算「利己（日干受生）」与「利子女（时干受生）」，锁定长生/天辅/太阴/值符/九天汇合位。' }
+};
+
+// 室内布局与行为风水（人和）参考字典
+const STEM_BEHAVIOR = {
+  '甲': { colorName:'翠绿 / 森林绿', colorHex:'#10b981', shortColor:'绿色', items:'精致摆件、高质感工艺品、挺括绿植、腕表', actions:'整理该方位杂物保持大气通透，仪态端正静心设定目标' },
+  '乙': { colorName:'浅绿 / 青玉色', colorHex:'#6ee7b7', shortColor:'浅绿', items:'常青小绿植/鲜花、茶叶罐、木质葫芦、书册', actions:'在此方位静坐深呼吸或双手合十许愿，柔和舒展心神' },
+  '丙': { colorName:'正红 / 绛紫色', colorHex:'#ef4444', shortColor:'红紫', items:'暖光台灯、圆形摆件/圆杯、水晶球、红色挂饰', actions:'开启暖色灯光照亮该方位，用圆杯喝口温水激活暖意' },
+  '丁': { colorName:'玫粉 / 珊瑚红', colorHex:'#f472b6', shortColor:'玫粉', items:'香薰蜡烛、长明小夜灯、鲜花、电子设备/证件', actions:'点燃香薰或开启柔和台灯，播放轻快音乐并专注心愿' },
+  '戊': { colorName:'明黄 / 琥珀黄', colorHex:'#eab308', shortColor:'明黄', items:'陶瓷容器、方形聚宝摆件、钱包硬币、厚实靠垫', actions:'在此清点整理钱包财务，安放稳重陶瓷或方形收纳物' },
+  '己': { colorName:'姜黄 / 咖啡棕', colorHex:'#b45309', shortColor:'咖黄', items:'陶艺小物、收纳盒、手账信封、编织饰品', actions:'把该角落衣物/物件折叠整齐归位，盘坐片刻稳固气场' },
+  '庚': { colorName:'纯白 / 象牙白', colorHex:'#f8fafc', shortColor:'纯白', items:'金属质感摆件、铜质工艺品、白瓷杯、原石', actions:'于此写下清晰行动清单或默念定心句，果断落子执行' },
+  '辛': { colorName:'银白 / 高级灰', colorHex:'#cbd5e1', shortColor:'银灰', items:'水晶球/手串、精致金属饰品、五帝钱/铜币', actions:'擦拭清洁该方位金属或水晶摆件，细心复盘并默许心愿' },
+  '壬': { colorName:'深蓝 / 墨青 / 黑', colorHex:'#2563eb', shortColor:'深蓝', items:'流动水景/清水杯、蓝色装饰画、玻璃水瓶', actions:'在对应方位摆放一杯流动清水或矿泉水，保持空气流通' },
+  '癸': { colorName:'炭黑 / 黛黑色', colorHex:'#475569', shortColor:'炭黑', items:'温热茶具、深色稳重器皿、加湿/香氛水雾', actions:'在此慢品一杯温热清茶，静心沉淀并保持该处洁净润泽' }
+};
+
+/* ============================================================================
+ * 三、纯原生时家奇门排盘引擎 + 9 大催局核心算法
+ * ============================================================================ */
+function elemRel(p1, p2) {
+  if (!p1 || !p2 || p1 === 5 || p2 === 5) return 'none';
+  const e1 = PALACE_META[p1].elem, e2 = PALACE_META[p2].elem;
+  if (PRODUCES[e1] === e2) return 'produce';
+  if (e1 === e2) return 'same';
+  if (ELEM_KE[e1] === e2) return 'overcome';
+  if (PRODUCES[e2] === e1) return 'drain';
+  return 'overcome_by';
+}
+function isProduce(p1, p2) { return elemRel(p1, p2) === 'produce'; }
+function isSame(p1, p2) { return elemRel(p1, p2) === 'same'; }
+function isOvercome(p1, p2) { return elemRel(p1, p2) === 'overcome'; }
+
+const QimenEngine = {
+  _jqYearCache: {},
+  _zhiRunDayCache: {},
+
+  getYearTerms(y) {
+    if (this._jqYearCache[y]) return this._jqYearCache[y];
+    const ly = LunarYear.fromYear(y);
+    const jds = ly.getJieQiJulianDays();
+    const list = [];
+    for (let i = 1; i <= 24; i++) {
+      const s = Solar.fromJulianDay(jds[i]);
+      list.push({
+        name: JQ_ORDER[i - 1],
+        idx: i - 1,
+        solar: Solar.fromYmd(s.getYear(), s.getMonth(), s.getDay())
+      });
+    }
+    this._jqYearCache[y] = list;
+    return list;
+  },
+
+  calcZhiRunJu(solar) {
+    let baseSolar = solar;
+    if (solar.getHour() >= 23) baseSolar = solar.next(1);
+    const dayKey = baseSolar.toYmd();
+    if (this._zhiRunDayCache[dayKey]) return this._zhiRunDayCache[dayKey];
+
+    const targetDay = Solar.fromYmd(baseSolar.getYear(), baseSolar.getMonth(), baseSolar.getDay());
+    const startYear = targetDay.getYear() - 2;
+    const termList = [];
+    for (let y = startYear; y <= targetDay.getYear() + 1; y++) {
+      const yrTerms = this.getYearTerms(y);
+      for (let k = 0; k < yrTerms.length; k++) termList.push(yrTerms[k]);
+    }
+
+    const dz0 = termList[0].solar;
+    let cycleStart = null;
+    for (let d = -8; d <= 6; d++) {
+      const cand = dz0.next(d);
+      const gz = cand.getLunar().getDayInGanZhi();
+      if (LunarUtil.getJiaZiIndex(gz) % 15 === 0) { cycleStart = cand; break; }
+    }
+    if (!cycleStart) cycleStart = dz0;
+
+    let tIdx = 0, isLeapCycle = false, safety = 0;
+    while (safety++ < 150) {
+      const nextCycleStart = cycleStart.next(15);
+      if (targetDay.subtract(cycleStart) >= 0 && targetDay.subtract(nextCycleStart) < 0) {
+        const daysIn = targetDay.subtract(cycleStart);
+        const yuanIdx = Math.min(2, Math.floor(daysIn / 5));
+        const term = termList[tIdx];
+        const info = JQ_TABLE[term.name];
+        const res = {
+          jqName: term.name, isLeapTerm: isLeapCycle, yuanIdx,
+          yuanName: ['上元','中元','下元'][yuanIdx],
+          isYang: info.yang, juNumber: info.ju[yuanIdx],
+          note: isLeapCycle ? `置闰(${term.name}闰)` : '置闰法'
+        };
+        this._zhiRunDayCache[dayKey] = res;
+        return res;
+      }
+      const curTerm = termList[tIdx], nextTerm = termList[tIdx + 1];
+      if (!nextTerm) break;
+      if (!isLeapCycle && (curTerm.name === '芒种' || curTerm.name === '大雪')) {
+        const chaoShenDays = nextTerm.solar.subtract(nextCycleStart);
+        if (chaoShenDays >= 9) {
+          isLeapCycle = true;
+          cycleStart = nextCycleStart;
+          continue;
+        }
+      }
+      isLeapCycle = false;
+      tIdx++;
+      cycleStart = nextCycleStart;
+    }
+    return this.calcChaiBuJu(solar);
+  },
+
+  calcChaiBuJu(solar) {
+    const lunar = solar.getLunar();
+    const prevJQ = lunar.getPrevJieQi(false);
+    const jqName = prevJQ.getName();
+    const dayGZ = lunar.getDayInGanZhiExact();
+    const dayIdx = LunarUtil.getJiaZiIndex(dayGZ);
+    const yuanIdx = Math.floor(dayIdx / 5) % 3;
+    const info = JQ_TABLE[jqName] || { yang: true, ju: [1,7,4] };
+    return {
+      jqName, isLeapTerm: false, yuanIdx,
+      yuanName: ['上元','中元','下元'][yuanIdx],
+      isYang: info.yang, juNumber: info.ju[yuanIdx], note: '拆补法'
+    };
+  },
+
+  calcYinPanJu(solar) {
+    const lunar = solar.getLunar();
+    const prevJQ = lunar.getPrevJieQi(false);
+    const jqName = prevJQ.getName();
+    const info = JQ_TABLE[jqName] || { yang: true };
+    const yZhiIdx = lunar.getYearZhiIndexExact() + 1;
+    const lMonth = Math.abs(lunar.getMonth());
+    const lDay = lunar.getDay();
+    const hZhiIdx = lunar.getTimeZhiIndex() + 1;
+    let ju = (yZhiIdx + lMonth + lDay + hZhiIdx) % 9;
+    if (ju === 0) ju = 9;
+    return {
+      jqName, isLeapTerm: false, yuanIdx: -1,
+      yuanName: '阴盘数', isYang: info.yang, juNumber: ju, note: '阴盘奇门'
+    };
+  },
+
+  // 生成基础奇门盘（与具体催局类型解耦，方便单盘一次评测 9 种催局）
+  generateBase(dateObj, method = 'ZhiRun') {
+    const solar = Solar.fromDate(dateObj);
+    const lunar = solar.getLunar();
+
+    const yGan = lunar.getYearGanExact(), yZhi = lunar.getYearZhiExact();
+    const mGan = lunar.getMonthGanExact(), mZhi = lunar.getMonthZhiExact();
+    const dGan = lunar.getDayGanExact(),   dZhi = lunar.getDayZhiExact();
+    const hGan = lunar.getTimeGan(),       hZhi = lunar.getTimeZhi();
+    const timeGZ = hGan + hZhi;
+
+    let juInfo;
+    if (method === 'ChaiBu') juInfo = this.calcChaiBuJu(solar);
+    else if (method === 'YinPan') juInfo = this.calcYinPanJu(solar);
+    else juInfo = this.calcZhiRunJu(solar);
+
+    const { isYang, juNumber } = juInfo;
+
+    // 1. 地盘
+    const earthStem = {};
+    for (let i = 0; i < 9; i++) {
+      const p = isYang
+        ? ((juNumber - 1 + i) % 9) + 1
+        : ((juNumber - 1 - i + 90) % 9) + 1;
+      earthStem[p] = STEM_SEQ[i];
+    }
+
+    // 2. 旬首、空亡、马星、值符、值使
+    const xunHeadGZ = LunarUtil.getXun(timeGZ);
+    const xunShouStem = XUN_HEAD_STEM[xunHeadGZ];
+    const xunKongStr = LunarUtil.getXunKong(timeGZ);
+    const xunKongZhis = [xunKongStr[0], xunKongStr[1]];
+    const xunKongPalaces = [...new Set(xunKongZhis.map(z => ZHI_TO_PALACE[z]))];
+
+    const maZhi = MA_XING_ZHI[hZhi];
+    const maPalace = ZHI_TO_PALACE[maZhi];
+
+    let xunPalace = 1;
+    for (let p = 1; p <= 9; p++) {
+      if (earthStem[p] === xunShouStem) { xunPalace = p; break; }
+    }
+    const zhiFuStar = PALACE_META[xunPalace].star;
+    const zhiShiDoor = PALACE_META[xunPalace].door;
+
+    // 3. 天盘（值符随时干）
+    const targetTimeStem = (hGan === '甲') ? xunShouStem : hGan;
+    let zfTargetPalace = 1;
+    for (let p = 1; p <= 9; p++) {
+      if (earthStem[p] === targetTimeStem) { zfTargetPalace = p; break; }
+    }
+    if (zfTargetPalace === 5) zfTargetPalace = 2;
+
+    const zfOrigRingPalace = (xunPalace === 5) ? 2 : xunPalace;
+    const zfOrigIdx = RING_ORDER.indexOf(zfOrigRingPalace);
+    const zfDstIdx = RING_ORDER.indexOf(zfTargetPalace);
+
+    const palaces = {};
+    RING_ORDER.forEach(p => {
+      palaces[p] = {
+        ...PALACE_META[p],
+        earthStem: earthStem[p],
+        earthJiStem: p === 2 ? earthStem[5] : '',
+        heavenStem: '', heavenJiStem: '', star: '', hasQin: false,
+        door: '', god: '', godShort: '',
+        marks: [], isKong: xunKongPalaces.includes(p), isMa: maPalace === p
+      };
+    });
+
+    for (let i = 0; i < 8; i++) {
+      const srcP = RING_ORDER[(zfOrigIdx + i) % 8];
+      const dstP = RING_ORDER[(zfDstIdx + i) % 8];
+      palaces[dstP].star = PALACE_META[srcP].star;
+      palaces[dstP].heavenStem = earthStem[srcP];
+      if (srcP === 2) {
+        palaces[dstP].heavenJiStem = earthStem[5];
+        palaces[dstP].hasQin = true;
+      }
+    }
+
+    // 4. 八门（值使随时宫）
+    const steps = (LunarUtil.getJiaZiIndex(timeGZ) - LunarUtil.getJiaZiIndex(xunHeadGZ) + 60) % 60;
+    let zsTargetPalace = isYang
+      ? ((xunPalace - 1 + steps) % 9) + 1
+      : ((xunPalace - 1 - steps + 90) % 9) + 1;
+    if (zsTargetPalace === 5) zsTargetPalace = 2;
+
+    const zsOrigIdx = RING_ORDER.indexOf(zfOrigRingPalace);
+    const zsDstIdx = RING_ORDER.indexOf(zsTargetPalace);
+    for (let i = 0; i < 8; i++) {
+      const srcP = RING_ORDER[(zsOrigIdx + i) % 8];
+      const dstP = RING_ORDER[(zsDstIdx + i) % 8];
+      palaces[dstP].door = PALACE_META[srcP].door;
+    }
+
+    // 5. 八神
+    for (let i = 0; i < 8; i++) {
+      const dstP = isYang
+        ? RING_ORDER[(zfDstIdx + i) % 8]
+        : RING_ORDER[(zfDstIdx - i + 8) % 8];
+      palaces[dstP].god = GODS_FULL[i];
+      palaces[dstP].godShort = GODS_SHORT[i];
+    }
+
+    // 6. 四害标记（空、迫、墓、刑）
+    RING_ORDER.forEach(p => {
+      const pd = palaces[p];
+      if (ELEM_KE[DOOR_ELEM[pd.door]] === pd.elem) pd.marks.push('迫');
+      if (JIXING_MAP[pd.heavenStem] === p || (pd.heavenJiStem && JIXING_MAP[pd.heavenJiStem] === p)) pd.marks.push('刑');
+      if ((RUME_MAP[pd.heavenStem] && RUME_MAP[pd.heavenStem].includes(p)) ||
+          (pd.heavenJiStem && RUME_MAP[pd.heavenJiStem] && RUME_MAP[pd.heavenJiStem].includes(p))) pd.marks.push('墓');
+      if (pd.isKong) pd.marks.push('空');
+    });
+
+    // 7. 关键干落宫（甲遁对应旬首六仪，确保甲日/甲时/庚辛日不漏单）
+    const findStemPalace = (targetStem, gzForXun) => {
+      const resolved = (targetStem === '甲')
+        ? (gzForXun ? XUN_HEAD_STEM[LunarUtil.getXun(gzForXun)] : xunShouStem)
+        : targetStem;
+      for (let i = 0; i < RING_ORDER.length; i++) {
+        const p = RING_ORDER[i];
+        if (palaces[p].heavenStem === resolved) return p;
+      }
+      for (let i = 0; i < RING_ORDER.length; i++) {
+        const p = RING_ORDER[i];
+        if (palaces[p].heavenJiStem === resolved) return p;
+      }
+      return 2;
+    };
+
+    const dayPalace = findStemPalace(dGan, dGan + dZhi);
+    const hourPalace = zfTargetPalace;
+    const monthPalace = findStemPalace(mGan, mGan + mZhi);
+    const heGan = COMBINES[dGan];
+    const heGanPalace = findStemPalace(heGan, null);
+
+    const dayCsZhi = SHIER_CHANGSHENG[dGan]['长生'];
+    const dayLgZhi = SHIER_CHANGSHENG[dGan]['临官'];
+    const hourCsZhi = SHIER_CHANGSHENG[hGan]['长生'];
+
+    return {
+      dateObj: new Date(dateObj.getTime()),
+      method,
+      bazi: { y: yGan+yZhi, m: mGan+mZhi, d: dGan+dZhi, h: hGan+hZhi, yGan, yZhi, mGan, mZhi, dGan, dZhi, hGan, hZhi },
+      juInfo, xunHeadGZ, xunShouStem, xunKongStr, xunKongZhis,
+      maZhi, maPalace,
+      zhiFuStar, zhiFuPalace: zfTargetPalace,
+      zhiShiDoor, zhiShiPalace: zsTargetPalace,
+      wuBuYuShi: (OVERCOMES[hGan] === dGan),
+      earthCenterStem: earthStem[5],
+      dayPalace, hourPalace, monthPalace, heGan, heGanPalace,
+      dayCsZhi, dayLgZhi, hourCsZhi,
+      dayCsPalace: ZHI_TO_PALACE[dayCsZhi],
+      dayLgPalace: ZHI_TO_PALACE[dayLgZhi],
+      hourCsPalace: ZHI_TO_PALACE[hourCsZhi],
+      palaces
+    };
+  },
+
+  // 评估指定催局类型（Type 1-9）
+  evaluateCuiju(base, cuijuType, gender = 'any') {
+    const { palaces, bazi, dayPalace, hourPalace, heGan, heGanPalace, zhiFuPalace, zhiShiPalace, xunShouStem } = base;
+    const { mGan, mZhi, dGan, hGan } = bazi;
+
+    const evalEnh = (targetP) => {
+      const fuOk = isProduce(zhiFuPalace, targetP) || isSame(zhiFuPalace, targetP);
+      const shiOk = isProduce(zhiShiPalace, targetP) || isSame(zhiShiPalace, targetP);
+      if (fuOk && shiOk) return { tier: 3, label: '三级', full: '⭐⭐⭐三级(值符+值使均生比用神)', color: '#10b981' };
+      if (fuOk)          return { tier: 2, label: '二级', full: '⭐⭐二级(值符生比用神)', color: '#22d3ee' };
+      if (shiOk)         return { tier: 2, label: '二级', full: '⭐⭐二级(值使生比用神)', color: '#22d3ee' };
+      return { tier: 1, label: '一级', full: '一级(基础)', color: '#84cc16' };
+    };
+
+    const hasTai = (pNum) => {
+      const pd = palaces[pNum];
+      const stems = [pd.heavenStem, pd.earthStem, pd.heavenJiStem].filter(Boolean);
+      return stems.some(s => STEM_TAI_PALACE[s] === pNum) || (STEM_TAI_PALACE['甲'] === pNum && stems.includes(xunShouStem));
+    };
+
+    const isSiHai = (pNum) => palaces[pNum] && palaces[pNum].marks.length > 0;
+    const matchStem = (pd, s) => {
+      const resolved = (s === '甲') ? xunShouStem : s;
+      return pd.heavenStem === resolved || pd.heavenJiStem === resolved;
+    };
+
+    const rawMatches = [];
+
+    // ===== Type 2: 催丁 =====
+    if (cuijuType === 2) {
+      let tRui = 5, lHe = 5, xin = 5, bing = 5;
+      RING_ORDER.forEach(p => {
+        const pd = palaces[p];
+        if (pd.star === '天芮') tRui = p;
+        if (pd.godShort === '合') lHe = p;
+        if (pd.heavenStem === '辛' || pd.heavenJiStem === '辛') xin = p;
+        if (pd.heavenStem === '丙' || pd.heavenJiStem === '丙') bing = p;
+      });
+      const primaryOk = isProduce(hourPalace, dayPalace) || isSame(hourPalace, dayPalace);
+      const hourHasTai = hasTai(hourPalace);
+      const dayHasTai = hasTai(dayPalace);
+
+      if (primaryOk && (hourHasTai || dayHasTai)) {
+        const babyTarget = gender === 'male' ? '丁' : gender === 'female' ? '癸' : (hGan === '甲' ? xunShouStem : hGan);
+        const babyLabel = gender === 'male' ? '男婴(丁)' : gender === 'female' ? '女婴(癸)' : `时干子女(${hGan})`;
+        const inP = (p) => palaces[p].heavenStem === babyTarget || palaces[p].earthStem === babyTarget || palaces[p].heavenJiStem === babyTarget;
+        const babyInHourP = inP(hourPalace);
+        const babyInDayP = inP(dayPalace);
+
+        if (babyInHourP || babyInDayP) {
+          const taiLoc = hourHasTai ? `时干宫(${palaces[hourPalace].gua}${hourPalace})见胎` : `日干宫(${palaces[dayPalace].gua}${dayPalace})见胎`;
+          const babyLoc = babyInHourP ? `${palaces[hourPalace].gua}${hourPalace}宫` : `${palaces[dayPalace].gua}${dayPalace}宫`;
+          const keyP = { '时干(孩)': hourPalace, '日干(母)': dayPalace, '辛(精)': xin, '丙(卵)': bing, '天芮(肚)': tRui, '六合(胎)': lHe };
+          const harmList = [];
+          Object.entries(keyP).forEach(([k, p]) => {
+            if (p !== 5 && isSiHai(p)) harmList.push(`${k}@${palaces[p].gua}${p}`);
+          });
+          const isTopGrade = harmList.length === 0;
+          rawMatches.push({
+            p: hourPalace,
+            reason: `${babyLabel}在${babyLoc} | ${taiLoc}`,
+            shortReason: `${babyLabel}·见胎`,
+            rel: isTopGrade ? '⭐⭐⭐极品无四害' : `注意四害:${harmList.join('、')}`,
+            grade: isTopGrade ? 1 : 2,
+            gradeLabel: isTopGrade ? '极品无四害' : '可用(有四害)',
+            enhance: evalEnh(hourPalace),
+            receiverPalace: dayPalace,
+            receiverType: '日干(母)',
+            extraSiHai: !isTopGrade
+          });
+        }
+      }
+    }
+
+    // ===== Type 7: 基础催文昌/考试 =====
+    else if (cuijuType === 7) {
+      RING_ORDER.forEach(p => {
+        const pd = palaces[p];
+        const hits = [];
+        if (pd.door === '景门') hits.push('景门(文章)');
+        if (pd.star === '天辅') hits.push('天辅(文曲)');
+        if (pd.heavenStem === '丁' || pd.heavenJiStem === '丁') hits.push('丁奇(灵光)');
+        if (hits.length && (isProduce(p, dayPalace) || isSame(p, dayPalace))) {
+          rawMatches.push({
+            p,
+            reason: hits.join(' + '),
+            shortReason: hits[0].split('(')[0],
+            rel: isProduce(p, dayPalace) ? '生日干' : '比和日干',
+            grade: hits.length >= 2 ? 1 : 2,
+            gradeLabel: hits.length >= 2 ? '双星文昌' : '文昌可用',
+            enhance: evalEnh(p),
+            receiverPalace: dayPalace,
+            receiverType: '日干(自身)'
+          });
+        }
+      });
+    }
+
+    // ===== Type 9: 高级催文昌(双测) =====
+    else if (cuijuType === 9) {
+      const dayMap = {}, hourMap = {};
+      if (base.dayCsPalace) dayMap[base.dayCsPalace] = [`长生(${base.dayCsZhi})`];
+      if (base.hourCsPalace) hourMap[base.hourCsPalace] = [`长生(${base.hourCsZhi})`];
+
+      RING_ORDER.forEach(p => {
+        const pd = palaces[p];
+        const gods = [];
+        if (pd.star === '天辅') gods.push('天辅');
+        if (pd.godShort === '阴') gods.push('太阴');
+        if (pd.godShort === '符') gods.push('值符');
+        if (pd.godShort === '天') gods.push('九天');
+        if (gods.length) {
+          if (!dayMap[p]) dayMap[p] = [];
+          dayMap[p].push(...gods);
+          if (!hourMap[p]) hourMap[p] = [];
+          hourMap[p].push(...gods);
+        }
+      });
+
+      Object.keys(dayMap).forEach(pStr => {
+        const p = parseInt(pStr, 10);
+        if (isProduce(p, dayPalace) || isSame(p, dayPalace)) {
+          rawMatches.push({
+            p,
+            reason: `[考运利己] ${dayMap[p].join('、')}`,
+            shortReason: `利己:${dayMap[p].slice(0,2).join('/')}`,
+            rel: isProduce(p, dayPalace) ? '生日干(极佳)' : '比和日干',
+            grade: dayMap[p].length >= 2 ? 1 : 2,
+            gradeLabel: dayMap[p].length >= 2 ? '多吉星聚' : '单星可用',
+            enhance: evalEnh(p),
+            receiverPalace: dayPalace,
+            receiverType: '日干(自身)'
+          });
+        }
+      });
+      Object.keys(hourMap).forEach(pStr => {
+        const p = parseInt(pStr, 10);
+        if (isProduce(p, hourPalace) || isSame(p, hourPalace)) {
+          rawMatches.push({
+            p,
+            reason: `[考运利子女] ${hourMap[p].join('、')}`,
+            shortReason: `利子女:${hourMap[p].slice(0,2).join('/')}`,
+            rel: isProduce(p, hourPalace) ? '生时干(极佳)' : '比和时干',
+            grade: hourMap[p].length >= 2 ? 1 : 2,
+            gradeLabel: hourMap[p].length >= 2 ? '多吉星聚' : '单星可用',
+            enhance: evalEnh(p),
+            receiverPalace: hourPalace,
+            receiverType: '时干(子女)'
+          });
+        }
+      });
+    }
+
+    // ===== Type 8: 九星催财法 =====
+    else if (cuijuType === 8) {
+      const palaceMap = {};
+      const addTarget = (p, label) => {
+        if (!palaceMap[p]) palaceMap[p] = [];
+        if (!palaceMap[p].includes(label)) palaceMap[p].push(label);
+      };
+      const wInfo = DAY_WEALTH[dGan];
+      RING_ORDER.forEach(p => {
+        const pd = palaces[p];
+        if (pd.door === '生门') addTarget(p, '生门');
+        if (pd.heavenStem === '戊' || pd.heavenJiStem === '戊') addTarget(p, '戊');
+        if (matchStem(pd, wInfo.zheng)) addTarget(p, `正财(${wInfo.zheng}${wInfo.zheng==='甲'?'遁'+xunShouStem:''})`);
+        if (matchStem(pd, wInfo.pian)) addTarget(p, `偏财(${wInfo.pian}${wInfo.pian==='甲'?'遁'+xunShouStem:''})`);
+      });
+      if (base.dayCsPalace) addTarget(base.dayCsPalace, `长生(${base.dayCsZhi})`);
+      if (base.dayLgPalace) addTarget(base.dayLgPalace, `禄位(${base.dayLgZhi})`);
+
+      Object.keys(palaceMap).forEach(pStr => {
+        const p = parseInt(pStr, 10);
+        if (isProduce(p, dayPalace) || isSame(p, dayPalace)) {
+          const star = palaces[p].star;
+          const isDeDi = STAR_DE_DI[p] && STAR_DE_DI[p].includes(star);
+          const isDeShi = STAR_DE_SHI[star] && STAR_DE_SHI[star].includes(mZhi);
+          let starStatus = '失时失地(普通)', grade = 3, gradeLabel = '三级(普通)';
+          if (isDeDi && isDeShi) { starStatus = '得地+得时(极品)'; grade = 1; gradeLabel = '极品·得地得时'; }
+          else if (isDeDi) { starStatus = '得地(旺相)'; grade = 2; gradeLabel = '旺相·得地'; }
+          else if (isDeShi) { starStatus = '得时(旺相)'; grade = 2; gradeLabel = '旺相·得时'; }
+
+          rawMatches.push({
+            p,
+            reason: `用神[${palaceMap[p].join('、')}] 临 ${star}(${starStatus})`,
+            shortReason: `${palaceMap[p].slice(0,2).join('/')}`,
+            rel: isProduce(p, dayPalace) ? '生旺日干' : '比和日干',
+            grade,
+            gradeLabel,
+            enhance: evalEnh(p),
+            receiverPalace: dayPalace,
+            receiverType: '日干(自身)'
+          });
+        }
+      });
+    }
+
+    // ===== Type 1, 3, 4, 5, 6 =====
+    else {
+      RING_ORDER.forEach(p => {
+        const pd = palaces[p];
+        if (cuijuType === 1) {
+          const hits = [];
+          if (pd.godShort === '符') hits.push('值符');
+          if (pd.godShort === '天') hits.push('九天');
+          if (pd.star === '天辅') hits.push('天辅');
+          if (hits.length && (isProduce(p, dayPalace) || isSame(p, dayPalace))) {
+            rawMatches.push({
+              p, reason: hits.join(' + '), shortReason: hits.join('/'),
+              rel: isProduce(p, dayPalace) ? '生日干' : '比和日干',
+              grade: hits.length >= 2 ? 1 : 2, gradeLabel: hits.length >= 2 ? '双贵汇聚' : '贵人可用',
+              enhance: evalEnh(p), receiverPalace: dayPalace, receiverType: '日干(自身)'
+            });
+          }
+        } else if (cuijuType === 3) {
+          const hits = [];
+          if (pd.door === '开门') hits.push('开门');
+          if (pd.godShort === '符') hits.push('值符');
+          if (pd.godShort === '天') hits.push('九天');
+          if (hits.length && (isProduce(p, dayPalace) || isSame(p, dayPalace))) {
+            rawMatches.push({
+              p, reason: hits.join(' + '), shortReason: hits.join('/'),
+              rel: isProduce(p, dayPalace) ? '生日干' : '比和日干',
+              grade: hits.length >= 2 ? 1 : 2, gradeLabel: hits.length >= 2 ? '官星齐聚' : '催官可用',
+              enhance: evalEnh(p), receiverPalace: dayPalace, receiverType: '日干(自身)'
+            });
+          }
+        } else if (cuijuType === 4) {
+          const isM = matchStem(pd, mGan);
+          const isWu = pd.heavenStem === '戊' || pd.heavenJiStem === '戊';
+          if (isWu && isProduce(p, dayPalace)) {
+            rawMatches.push({
+              p, reason: '戊(钱财)', shortReason: '戊财生身',
+              rel: '生日干(带钱给你)', grade: 1, gradeLabel: '财来就我',
+              enhance: evalEnh(p), receiverPalace: dayPalace, receiverType: '日干(自身)'
+            });
+          }
+          if (isM && isProduce(p, dayPalace)) {
+            rawMatches.push({
+              p, reason: `月干${mGan}(欠债人)`, shortReason: '月干生身',
+              rel: '生日干(主动还钱)', grade: 1, gradeLabel: '主动还款',
+              enhance: evalEnh(p), receiverPalace: dayPalace, receiverType: '日干(自身)'
+            });
+          }
+          if (isM && isOvercome(dayPalace, p)) {
+            rawMatches.push({
+              p, reason: `月干${mGan}(欠债人)`, shortReason: '日克月干',
+              rel: '日干克月干(讨债强势)', grade: 2, gradeLabel: '强势追款',
+              enhance: evalEnh(p), receiverPalace: dayPalace, receiverType: '日干(自身)'
+            });
+          }
+        } else if (cuijuType === 5) {
+          const hits = [];
+          if (pd.godShort === '合') hits.push('六合(姻缘)');
+          if (pd.door === '休门') hits.push('休门(桃花)');
+          if (hits.length && (isProduce(p, dayPalace) || isSame(p, dayPalace))) {
+            rawMatches.push({
+              p, reason: hits.join(' + '), shortReason: hits.map(x=>x.slice(0,2)).join('/'),
+              rel: isProduce(p, dayPalace) ? '生日干' : '比和日干',
+              grade: hits.length >= 2 ? 1 : 2, gradeLabel: hits.length >= 2 ? '合休双临' : '桃花可用',
+              enhance: evalEnh(p), receiverPalace: dayPalace, receiverType: '日干(自身)'
+            });
+          }
+        } else if (cuijuType === 6) {
+          if (p === dayPalace) {
+            if (dayPalace === heGanPalace) {
+              rawMatches.push({
+                p: dayPalace, reason: `夫妻同宫(${dGan}+${heGan})`, shortReason: '夫妻同宫',
+                rel: '同宫和谐', grade: 1, gradeLabel: '同宫合和',
+                enhance: evalEnh(dayPalace), receiverPalace: dayPalace, receiverType: '日干(自身)'
+              });
+            } else if (isProduce(dayPalace, heGanPalace) || isProduce(heGanPalace, dayPalace)) {
+              rawMatches.push({
+                p: heGanPalace, reason: `夫妻合干(${heGan})`, shortReason: `合干${heGan}`,
+                rel: isProduce(heGanPalace, dayPalace) ? '合干生日干' : '日干生合干',
+                grade: 2, gradeLabel: '两宫生合',
+                enhance: evalEnh(heGanPalace), receiverPalace: dayPalace, receiverType: '日干(自身)'
+              });
+            }
+          }
+        }
+      });
+    }
+
+    // 丰富四害信息并排序（极品/无四害/三级增强靠前）
+    const matches = rawMatches.map(m => {
+      const targetMarks = palaces[m.p].marks || [];
+      const recvMarks = palaces[m.receiverPalace] ? palaces[m.receiverPalace].marks : [];
+      const hasSiHai = targetMarks.length > 0 || recvMarks.length > 0 || !!m.extraSiHai;
+      const score = (4 - Math.min(3, m.grade)) * 100 + m.enhance.tier * 25 + (hasSiHai ? 0 : 40);
+      return {
+        ...m,
+        targetMarks,
+        recvMarks,
+        hasSiHai,
+        score,
+        targetDoor: palaces[m.p].door,
+        dayDoor: palaces[dayPalace].door,
+        hourDoor: palaces[hourPalace].door
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    // 按宫位索引，方便罗盘 5 环直接渲染
+    const byPalace = {};
+    matches.forEach(m => {
+      if (!byPalace[m.p]) byPalace[m.p] = [];
+      byPalace[m.p].push(m);
+    });
+
+    return {
+      cuijuType,
+      gender,
+      matches,
+      byPalace,
+      bestMatch: matches[0] || null
+    };
+  }
+};
+
+/* ============================================================================
+ * 四、应用状态 & 3D 传感器诊断/磁偏校准引擎（严格单源互斥 + 瀑布流）
+ * ============================================================================ */
+const state = {
+  date: new Date(),
+  method: 'ZhiRun',     // 催局默认置闰法，与 qimen_cuiju.txt 一致
+  cuijuType: 8,         // 默认 Type 8 九星催财法
+  gender: 'any',        // 仅 Type 2 催丁使用
+  labelMode: 'cuiju',   // 'cuiju' | 'fengshui'
+  tilt3D: false,
+  rings: { ring1:true, ring2:true, ring3:true, ring4:true, ring5:true },
+  heading: 0,
+  targetHeading: 0,
+  sensorActive: false,
+  cameraActive: false,
+  stream: null,
+  baseChart: null,
+  cuijuRes: null,
+  dragMoved: false
+};
+
+const sensorCtrl = {
+  absSensor: null,
+  fallbackTimer: null,
+  channel: 'simulation',
+  sinEma: null,
+  cosEma: null,
+  declination: parseFloat(localStorage.getItem('qm_cuiju_declination') || '0') || 0,
+  rawDeg: 0,
+  compDeg: 0,
+  r22: 1.0,
+  hz: 0,
+  frameTimes: [],
+  lastDiagUi: 0
+};
+
+function normDeg(d) {
+  return ((d % 360) + 360) % 360;
+}
+
+function getDirLookup(deg) {
+  const d = normDeg(deg);
+  const pIdx = Math.floor(((d + 22.5) % 360) / 45);
+  const palaceNum = RING_ORDER[pIdx];
+  const zIdx = Math.floor(((d + 15) % 360) / 30);
+  const zhiObj = ZHI_12[zIdx];
+  const sIdx = Math.floor(((d + 7.5) % 360) / 15);
+  const shanObj = SHAN_24[sIdx];
+  const nearBoundary = GUA_BOUNDARIES.some(b => {
+    const diff = Math.abs(((d - b + 540) % 360) - 180);
+    return diff <= 1.5;
+  });
+  return { deg: d, palaceNum, zhiObj, shanObj, nearBoundary };
+}
+
+function resetSensorFilter() {
+  sensorCtrl.sinEma = null;
+  sensorCtrl.cosEma = null;
+  sensorCtrl.frameTimes = [];
+  sensorCtrl.hz = 0;
+}
+
+function updateDiagUI(force = false) {
+  const modal = document.getElementById('diag-backdrop');
+  if (!modal || !modal.classList.contains('open')) return;
+  const now = performance.now();
+  if (!force && now - sensorCtrl.lastDiagUi < 120) return;
+  sensorCtrl.lastDiagUi = now;
+
+  const cutoff = now - 1000;
+  while (sensorCtrl.frameTimes.length && sensorCtrl.frameTimes[0] < cutoff) {
+    sensorCtrl.frameTimes.shift();
+  }
+  sensorCtrl.hz = sensorCtrl.channel === 'simulation' ? 0 : sensorCtrl.frameTimes.length;
+
+  const chEl = document.getElementById('diag-channel');
+  const hzEl = document.getElementById('diag-hz');
+  const r22El = document.getElementById('diag-r22');
+  const angEl = document.getElementById('diag-angles');
+  const footEl = document.getElementById('diag-foot');
+
+  if (chEl) chEl.textContent = sensorCtrl.channel;
+  if (hzEl) hzEl.textContent = `${sensorCtrl.hz.toFixed(1)} Hz`;
+  if (r22El) r22El.textContent = sensorCtrl.r22.toFixed(3);
+  if (angEl) angEl.textContent = `${sensorCtrl.rawDeg.toFixed(1)}° / ${sensorCtrl.compDeg.toFixed(1)}°`;
+
+  document.querySelectorAll('#diag-ch-grid .diag-ch-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.ch === sensorCtrl.channel);
+  });
+
+  if (footEl) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const platStr = isIOS
+      ? 'iOS / Safari (webkitCompass 瀑布流)'
+      : 'Android / 桌面设备 (AbsoluteOrientationSensor 瀑布流)';
+    footEl.textContent =
+      `识别平台: ${platStr} | 安全上下文: ${isSecure ? 'HTTPS 安全' : '非 HTTPS 受限'} | 倾角补偿: 3D ENU 矩阵按 R22 在 +Y 与 -Z 间线性混合。`;
+  }
+}
+
+function openDiagModal() {
+  const modal = document.getElementById('diag-backdrop');
+  if (!modal) return;
+  const slider = document.getElementById('diag-dec-slider');
+  const valEl = document.getElementById('diag-dec-val');
+
+  if (slider && valEl) {
+    slider.value = sensorCtrl.declination;
+    valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
+
+    if (sensorCtrl.channel === 'simulation') {
+      const simSlider = document.getElementById('sim-slider');
+      const simBase = simSlider ? (parseFloat(simSlider.value) || 0) : normDeg(state.targetHeading - sensorCtrl.declination);
+      sensorCtrl.rawDeg = simBase;
+      sensorCtrl.compDeg = normDeg(simBase + sensorCtrl.declination);
+    }
+
+    slider.oninput = () => {
+      sensorCtrl.declination = parseFloat(slider.value);
+      localStorage.setItem('qm_cuiju_declination', String(sensorCtrl.declination));
+      valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
+
+      if (sensorCtrl.sinEma !== null) {
+        const base = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+        sensorCtrl.compDeg = normDeg(base + sensorCtrl.declination);
+        state.targetHeading = sensorCtrl.compDeg;
+      } else if (sensorCtrl.channel === 'simulation') {
+        const simSlider = document.getElementById('sim-slider');
+        const simBase = simSlider ? (parseFloat(simSlider.value) || 0) : sensorCtrl.rawDeg;
+        sensorCtrl.rawDeg = simBase;
+        sensorCtrl.compDeg = normDeg(simBase + sensorCtrl.declination);
+        state.targetHeading = sensorCtrl.compDeg;
+      }
+      updateDiagUI(true);
+    };
+  }
+
+  modal.classList.add('open');
+  updateDiagUI(true);
+}
+
+function closeDiagModal() {
+  const modal = document.getElementById('diag-backdrop');
+  if (modal) modal.classList.remove('open');
+}
+
+function feedHeading(rawDeg, r22Val) {
+  if (!state.sensorActive || isNaN(rawDeg)) return;
+  const d = normDeg(rawDeg);
+  sensorCtrl.frameTimes.push(performance.now());
+  sensorCtrl.rawDeg = d;
+  if (typeof r22Val === 'number' && !isNaN(r22Val)) sensorCtrl.r22 = r22Val;
+
+  const rad = d * Math.PI / 180;
+  const s = Math.sin(rad), c = Math.cos(rad);
+
+  if (sensorCtrl.sinEma === null) {
+    sensorCtrl.sinEma = s;
+    sensorCtrl.cosEma = c;
+  } else {
+    const prev = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+    const jump = Math.abs(((d - prev + 540) % 360) - 180);
+    let alpha = 0.14;
+    if (jump < 1.2) alpha = 0.04;
+    else if (jump > 45) alpha = 0.07;
+    else if (jump > 10) alpha = 0.22;
+
+    sensorCtrl.sinEma = sensorCtrl.sinEma * (1 - alpha) + s * alpha;
+    sensorCtrl.cosEma = sensorCtrl.cosEma * (1 - alpha) + c * alpha;
+    const len = Math.hypot(sensorCtrl.sinEma, sensorCtrl.cosEma) || 1;
+    sensorCtrl.sinEma /= len;
+    sensorCtrl.cosEma /= len;
+  }
+
+  const filtered = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+  const compensated = normDeg(filtered + sensorCtrl.declination);
+  sensorCtrl.compDeg = compensated;
+
+  const outDiff = Math.abs(((compensated - state.targetHeading + 540) % 360) - 180);
+  if (outDiff >= 0.3) state.targetHeading = compensated;
+  updateDiagUI();
+}
+
+function blendENUHeading(topE, topN, camE, camN, r22) {
+  const t = Math.max(0, Math.min(1, r22));
+  const tLen = Math.hypot(topE, topN);
+  const cLen = Math.hypot(camE, camN);
+
+  let E = 0, N = 0;
+  if (tLen > 1e-4 && cLen > 1e-4) {
+    E = t * (topE / tLen) + (1 - t) * (camE / cLen);
+    N = t * (topN / tLen) + (1 - t) * (camN / cLen);
+  } else if (tLen > 1e-4) {
+    E = topE; N = topN;
+  } else {
+    E = camE; N = camN;
+  }
+  return { deg: normDeg(Math.atan2(E, N) * 180 / Math.PI), r22 };
+}
+
+function headingFromQuaternion(q) {
+  const [x, y, z, w] = q;
+  const topE = 2 * (x * y - z * w);
+  const topN = 1 - 2 * (x * x + z * z);
+  const camE = -2 * (x * z + y * w);
+  const camN = -2 * (y * z - x * w);
+  const r22 = 1 - 2 * (x * x + y * y);
+  return blendENUHeading(topE, topN, camE, camN, r22);
+}
+
+function headingFromEuler(alpha, beta, gamma) {
+  const r = Math.PI / 180;
+  const a = alpha * r, b = beta * r, g = gamma * r;
+  const cA = Math.cos(a), sA = Math.sin(a);
+  const cB = Math.cos(b), sB = Math.sin(b);
+  const cG = Math.cos(g), sG = Math.sin(g);
+  const topE = -sA * cB, topN = cA * cB;
+  const camE = -(cA * sG + sA * sB * cG);
+  const camN = -(sA * sG - cA * sB * cG);
+  const r22 = cB * cG;
+  return blendENUHeading(topE, topN, camE, camN, r22);
+}
+
+function onAbsEvent(e) {
+  if (!state.sensorActive || sensorCtrl.channel !== 'orientationabsolute') return;
+  if (e.alpha === null || e.beta === null || e.gamma === null) return;
+  const res = headingFromEuler(e.alpha, e.beta, e.gamma);
+  feedHeading(res.deg, res.r22);
+}
+
+function onDeviceEvent(e) {
+  if (!state.sensorActive) return;
+  if (sensorCtrl.channel === 'webkitCompass') {
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+      const r22 = (e.beta !== null && e.gamma !== null)
+        ? Math.cos(e.beta * Math.PI / 180) * Math.cos(e.gamma * Math.PI / 180)
+        : 1;
+      feedHeading(e.webkitCompassHeading, r22);
+    }
+    return;
+  }
+  if (sensorCtrl.channel === 'deviceorientation') {
+    if (e.alpha === null || e.beta === null || e.gamma === null) return;
+    const res = headingFromEuler(e.alpha, e.beta, e.gamma);
+    feedHeading(res.deg, res.r22);
+  }
+}
+
+function stopAllSensors() {
+  if (sensorCtrl.fallbackTimer) { clearTimeout(sensorCtrl.fallbackTimer); sensorCtrl.fallbackTimer = null; }
+  if (sensorCtrl.absSensor) { try { sensorCtrl.absSensor.stop(); } catch (_) {} sensorCtrl.absSensor = null; }
+  window.removeEventListener('deviceorientationabsolute', onAbsEvent, true);
+  window.removeEventListener('deviceorientation', onDeviceEvent, true);
+  resetSensorFilter();
+}
+
+function syncSensorDockUI() {
+  const btn = document.getElementById('btn-sensor');
+  const lbl = document.getElementById('sensor-lbl');
+  const simBar = document.getElementById('sim-bar');
+  const isSim = sensorCtrl.channel === 'simulation';
+  state.sensorActive = !isSim;
+  if (btn) btn.classList.toggle('active', !isSim);
+  if (simBar) simBar.classList.toggle('show', isSim);
+
+  const map = {
+    absSensor: '四元数', orientationabsolute: 'ABS北',
+    deviceorientation: '相对角', webkitCompass: 'iOS北', simulation: '手动中'
+  };
+  if (lbl) lbl.textContent = map[sensorCtrl.channel] || '手动中';
+  updateDiagUI(true);
+}
+
+async function ensureIOSPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    const res = await DeviceOrientationEvent.requestPermission();
+    return res === 'granted';
+  }
+  return true;
+}
+
+async function forceSensorChannel(ch) {
+  stopAllSensors();
+  if (ch === 'simulation') {
+    sensorCtrl.channel = 'simulation';
+    syncSensorDockUI();
+    return;
+  }
+  try {
+    const ok = await ensureIOSPermission();
+    if (!ok) {
+      alert('未获得罗盘传感器权限，已切换回手动模拟模式。');
+      sensorCtrl.channel = 'simulation';
+      syncSensorDockUI();
+      return;
+    }
+    if (ch === 'absSensor') {
+      if (!('AbsoluteOrientationSensor' in window)) {
+        alert('当前浏览器不支持 AbsoluteOrientationSensor。');
+        sensorCtrl.channel = 'simulation';
+        syncSensorDockUI();
+        return;
+      }
+      sensorCtrl.channel = 'absSensor';
+      syncSensorDockUI();
+      const s = new AbsoluteOrientationSensor({ frequency: 30, referenceFrame: 'device' });
+      sensorCtrl.absSensor = s;
+      s.addEventListener('reading', () => {
+        if (sensorCtrl.channel !== 'absSensor' || !s.quaternion) return;
+        const res = headingFromQuaternion(s.quaternion);
+        feedHeading(res.deg, res.r22);
+      });
+      s.addEventListener('error', () => alert('AbsoluteOrientationSensor 启动失败，请尝试 2 号通道。'));
+      s.start();
+      return;
+    }
+    if (ch === 'orientationabsolute') {
+      sensorCtrl.channel = 'orientationabsolute';
+      syncSensorDockUI();
+      window.addEventListener('deviceorientationabsolute', onAbsEvent, true);
+      return;
+    }
+    if (ch === 'deviceorientation' || ch === 'webkitCompass') {
+      sensorCtrl.channel = ch;
+      syncSensorDockUI();
+      window.addEventListener('deviceorientation', onDeviceEvent, true);
+      return;
+    }
+  } catch (err) {
+    sensorCtrl.channel = 'simulation';
+    syncSensorDockUI();
+  }
+}
+
+async function runAutoWaterfall() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) { await forceSensorChannel('webkitCompass'); return; }
+  const order = [];
+  if ('AbsoluteOrientationSensor' in window) order.push('absSensor');
+  order.push('orientationabsolute', 'deviceorientation', 'simulation');
+  let stepIdx = 0;
+  async function tryNext() {
+    const ch = order[stepIdx++];
+    await forceSensorChannel(ch);
+    if (ch === 'simulation') return;
+    sensorCtrl.fallbackTimer = setTimeout(() => {
+      if (sensorCtrl.channel === ch && sensorCtrl.frameTimes.length === 0) tryNext();
+    }, 850);
+  }
+  tryNext();
+}
+
+async function toggleSensorMode() {
+  if (sensorCtrl.channel !== 'simulation') await forceSensorChannel('simulation');
+  else await runAutoWaterfall();
+}
+
+async function toggleCamera() {
+  const video = document.getElementById('camera-video');
+  const bgGrid = document.getElementById('bg-grid');
+  const btn = document.getElementById('btn-camera');
+  if (state.cameraActive) {
+    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+    state.stream = null;
+    state.cameraActive = false;
+    video.classList.remove('active');
+    bgGrid.classList.remove('ar-on');
+    btn.classList.remove('active');
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('当前浏览器或非 HTTPS 环境无法调用后置摄像头。');
+    return;
+  }
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    video.srcObject = state.stream;
+    await video.play();
+    state.cameraActive = true;
+    video.classList.add('active');
+    bgGrid.classList.add('ar-on');
+    btn.classList.add('active');
+    resetSensorFilter();
+  } catch (err) {
+    alert('无法启动摄像头（请确认已授权且为 HTTPS 链接）：' + err.message);
+  }
+}
+
+/* ============================================================================
+ * 五、SVG 5-Ring 催局罗盘高清渲染引擎
+ * ============================================================================ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}, text = null) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (text !== null) el.textContent = text;
+  return el;
+}
+function polar(cx, cy, r, deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function sectorPath(cx, cy, rIn, rOut, startDeg, endDeg) {
+  const p1 = polar(cx, cy, rOut, startDeg);
+  const p2 = polar(cx, cy, rOut, endDeg);
+  const p3 = polar(cx, cy, rIn, endDeg);
+  const p4 = polar(cx, cy, rIn, startDeg);
+  const large = (endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${rOut} ${rOut} 0 ${large} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)} A ${rIn} ${rIn} 0 ${large} 0 ${p4.x.toFixed(2)} ${p4.y.toFixed(2)} Z`;
+}
+function radialText(cx, cy, r, deg, text, attrs = {}) {
+  const pos = polar(cx, cy, r, deg);
+  return svgEl('text', {
+    x: pos.x.toFixed(2), y: pos.y.toFixed(2),
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+    transform: `rotate(${deg} ${pos.x.toFixed(2)} ${pos.y.toFixed(2)})`,
+    ...attrs
+  }, text);
+}
+
+function handlePalaceTap(pNum) {
+  if (state.dragMoved) return;
+  openPalaceDetail(pNum);
+}
+
+function renderCompassSVG() {
+  const base = state.baseChart;
+  const cres = state.cuijuRes;
+  if (!base || !cres) return;
+  const cx = 500, cy = 500;
+  const typeMeta = CUIJU_TYPES[state.cuijuType];
+
+  // Ring 5: 24 山
+  const g5 = document.getElementById('ring5-24shan');
+  g5.innerHTML = '';
+  g5.style.display = state.rings.ring5 ? '' : 'none';
+  if (state.rings.ring5) {
+    SHAN_24.forEach(s => {
+      const start = s.center - 7.5, end = s.center + 7.5;
+      const fill = s.type === 'gua' ? 'rgba(226,190,103,0.16)' : (s.type === 'zhi' ? 'rgba(15,23,42,0.86)' : 'rgba(10,16,30,0.82)');
+      g5.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 446, 494, start, end),
+        fill, stroke: 'rgba(226,190,103,0.28)', 'stroke-width': 1
+      }));
+      g5.appendChild(radialText(cx, cy, 470, s.center, s.name, {
+        fill: s.type === 'gua' ? '#fde68a' : (s.type === 'zhi' ? '#e5e7eb' : '#9ca3af'),
+        'font-size': 18, 'font-weight': s.type === 'gua' ? '800' : '600'
+      }));
+      const t1 = polar(cx, cy, 488, s.center), t2 = polar(cx, cy, 494, s.center);
+      g5.appendChild(svgEl('line', { x1:t1.x, y1:t1.y, x2:t2.x, y2:t2.y, stroke:'#e2be67', 'stroke-width':1.5 }));
+    });
+    GUA_BOUNDARIES.forEach(b => {
+      const p1 = polar(cx, cy, 442, b), p2 = polar(cx, cy, 496, b);
+      g5.appendChild(svgEl('line', { x1:p1.x, y1:p1.y, x2:p2.x, y2:p2.y, stroke:'#ef4444', 'stroke-width':2.4, opacity:0.85 }));
+    });
+  }
+
+  // Ring 4: 12 地支 + 空/马 + 日干长生/禄位
+  const g4 = document.getElementById('ring4-12zhi');
+  g4.innerHTML = '';
+  g4.style.display = state.rings.ring4 ? '' : 'none';
+  if (state.rings.ring4) {
+    ZHI_12.forEach(z => {
+      const start = z.center - 15, end = z.center + 15;
+      const isKong = base.xunKongZhis.includes(z.name);
+      const isMa = (base.maZhi === z.name);
+      const isCs = (base.dayCsZhi === z.name);
+      const isLg = (base.dayLgZhi === z.name);
+
+      let fill = 'rgba(13, 21, 38, 0.84)';
+      if (isCs || isLg) fill = 'rgba(16, 185, 129, 0.22)';
+      if (isKong) fill = 'rgba(139, 92, 246, 0.28)';
+      else if (isMa && !isCs && !isLg) fill = 'rgba(245, 158, 11, 0.24)';
+
+      g4.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 396, 446, start, end),
+        fill, stroke: 'rgba(148,163,184,0.32)', 'stroke-width': 1.2
+      }));
+      g4.appendChild(radialText(cx, cy, 424, z.center, z.name, {
+        fill: isKong ? '#ddd6fe' : ((isCs || isLg) ? '#6ee7b7' : (isMa ? '#fde68a' : '#cbd5e1')),
+        'font-size': 21, 'font-weight': '700'
+      }));
+      const tags = [];
+      if (isCs) tags.push('生');
+      if (isLg) tags.push('禄');
+      if (isKong) tags.push('空');
+      if (isMa) tags.push('马');
+      if (tags.length) {
+        g4.appendChild(radialText(cx, cy, 406, z.center, tags.join(''), {
+          fill: isKong ? '#c4b5fd' : ((isCs || isLg) ? '#6ee7b7' : '#fbbf24'),
+          'font-size': 11.5, 'font-weight': '800'
+        }));
+      }
+    });
+  }
+
+  // Ring 3: 催局触发条件 / 布局配色物象
+  const g3 = document.getElementById('ring3-trigger');
+  g3.innerHTML = '';
+  g3.style.display = state.rings.ring3 ? '' : 'none';
+  if (state.rings.ring3) {
+    RING_ORDER.forEach(pNum => {
+      const pd = base.palaces[pNum];
+      const pMatches = cres.byPalace[pNum] || [];
+      const topM = pMatches[0] || null;
+      const isRecv = (pNum === base.dayPalace) || (state.cuijuType === 9 && pNum === base.hourPalace);
+      const start = pd.center - 22.5, end = pd.center + 22.5;
+
+      let fill = 'rgba(15, 23, 42, 0.80)';
+      if (topM && !base.wuBuYuShi) fill = topM.hasSiHai ? 'rgba(245, 158, 11, 0.16)' : 'rgba(16, 185, 129, 0.18)';
+      else if (isRecv) fill = 'rgba(96, 165, 250, 0.15)';
+
+      const grp = svgEl('g', { class: 'palace-hit' });
+      grp.onclick = () => handlePalaceTap(pNum);
+
+      grp.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 334, 396, start, end),
+        fill, stroke: 'rgba(226,190,103,0.35)', 'stroke-width': 1.3
+      }));
+
+      if (state.labelMode === 'fengshui') {
+        const beh = STEM_BEHAVIOR[pd.heavenStem] || STEM_BEHAVIOR['戊'];
+        grp.appendChild(radialText(cx, cy, 373, pd.center, `色:${beh.shortColor}`, {
+          fill: beh.colorHex === '#475569' ? '#cbd5e1' : beh.colorHex,
+          'font-size': 18, 'font-weight': '800'
+        }));
+        grp.appendChild(radialText(cx, cy, 349, pd.center, `${pd.dir} · ${beh.items.split('、')[0].slice(0,4)}`, {
+          fill: '#cbd5e1', 'font-size': 13, 'font-weight': '600'
+        }));
+      } else {
+        if (topM) {
+          grp.appendChild(radialText(cx, cy, 373, pd.center, topM.shortReason, {
+            fill: topM.hasSiHai ? '#fde68a' : '#6ee7b7',
+            'font-size': 16.5, 'font-weight': '800'
+          }));
+          grp.appendChild(radialText(cx, cy, 349, pd.center, topM.gradeLabel, {
+            fill: '#e5e7eb', 'font-size': 12.5, 'font-weight': '700'
+          }));
+        } else {
+          const roles = [];
+          if (pNum === base.dayPalace) roles.push('日干(自身)');
+          if (pNum === base.hourPalace) roles.push('时干');
+          if (pNum === base.zhiFuPalace) roles.push('值符');
+          if (pNum === base.zhiShiPalace) roles.push('值使');
+          grp.appendChild(radialText(cx, cy, 373, pd.center, roles[0] || `${pd.dir}·${pd.gua}${pNum}`, {
+            fill: isRecv ? '#93c5fd' : '#9ca3af',
+            'font-size': 16.5, 'font-weight': isRecv ? '800' : '600'
+          }));
+          const relMap = { produce:'生日干', same:'比和日干', overcome:'克日干', drain:'日干泄', overcome_by:'日干克' };
+          const relTxt = pNum === base.dayPalace ? `自身宫(${base.bazi.dGan})` : (relMap[elemRel(pNum, base.dayPalace)] || '');
+          grp.appendChild(radialText(cx, cy, 349, pd.center, relTxt, {
+            fill: '#94a3b8', 'font-size': 12.5, 'font-weight': '600'
+          }));
+        }
+      }
+      g3.appendChild(grp);
+    });
+  }
+
+  // Ring 2: 催局布局位 / 增强等级 / 四害预警
+  const g2 = document.getElementById('ring2-cuiju');
+  g2.innerHTML = '';
+  g2.style.display = state.rings.ring2 ? '' : 'none';
+  if (state.rings.ring2) {
+    RING_ORDER.forEach(pNum => {
+      const pd = base.palaces[pNum];
+      const pMatches = cres.byPalace[pNum] || [];
+      const topM = pMatches[0] || null;
+      const isDayP = pNum === base.dayPalace;
+      const isHourP = pNum === base.hourPalace;
+      const start = pd.center - 22.5, end = pd.center + 22.5;
+
+      let fill = 'rgba(15, 23, 42, 0.62)';
+      let stroke = 'rgba(226,190,103,0.36)';
+      let sw = 1.3;
+      let mainLbl = `${pd.dir}·${pd.gua}${pNum}`;
+      let mainColor = '#6b7280';
+
+      if (topM && !base.wuBuYuShi) {
+        if (topM.hasSiHai) {
+          fill = 'rgba(245, 158, 11, 0.30)';
+          stroke = '#f59e0b'; sw = 2.2;
+          mainLbl = `布局·${topM.enhance.label}`;
+          mainColor = '#fef3c7';
+        } else if (topM.enhance.tier === 3 || topM.grade === 1) {
+          fill = 'rgba(16, 185, 129, 0.44)';
+          stroke = '#10b981'; sw = 2.6;
+          mainLbl = `★布局·${topM.enhance.label}`;
+          mainColor = '#ffffff';
+        } else if (topM.enhance.tier === 2) {
+          fill = 'rgba(34, 211, 238, 0.32)';
+          stroke = '#22d3ee'; sw = 2.2;
+          mainLbl = `★布局·${topM.enhance.label}`;
+          mainColor = '#ffffff';
+        } else {
+          fill = 'rgba(132, 204, 22, 0.28)';
+          stroke = '#84cc16'; sw = 1.8;
+          mainLbl = `布局·${topM.enhance.label}`;
+          mainColor = '#ffffff';
+        }
+      } else if (isDayP) {
+        fill = 'rgba(96, 165, 250, 0.26)';
+        stroke = '#60a5fa'; sw = 2.0;
+        mainLbl = '受生·日干位';
+        mainColor = '#dbeafe';
+      } else if (state.cuijuType === 9 && isHourP) {
+        fill = 'rgba(96, 165, 250, 0.22)';
+        stroke = '#60a5fa'; sw = 1.8;
+        mainLbl = '受生·子女位';
+        mainColor = '#dbeafe';
+      } else if (pd.marks.length) {
+        fill = 'rgba(239, 68, 68, 0.14)';
+        mainLbl = '非用神';
+        mainColor = '#9ca3af';
+      }
+
+      const grp = svgEl('g', { class: 'palace-hit' });
+      grp.onclick = () => handlePalaceTap(pNum);
+
+      grp.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 264, 334, start, end),
+        fill, stroke, 'stroke-width': sw
+      }));
+      grp.appendChild(radialText(cx, cy, 307, pd.center, mainLbl, {
+        fill: mainColor, 'font-size': 18.5, 'font-weight': '800'
+      }));
+
+      const subBadges = [];
+      if (topM && isDayP) subBadges.push('兼日干');
+      if (pd.marks.length) subBadges.push('⚠️' + pd.marks.join(''));
+      else if (topM && !base.wuBuYuShi) subBadges.push('无四害');
+      if (subBadges.length) {
+        grp.appendChild(radialText(cx, cy, 281, pd.center, subBadges.join(' '), {
+          fill: pd.marks.length ? '#fecaca' : '#fde68a',
+          'font-size': 13.5, 'font-weight': '700'
+        }));
+      }
+      g2.appendChild(grp);
+    });
+  }
+
+  // Ring 1: 奇门八宫核心盘
+  const g1 = document.getElementById('ring1-qimen');
+  g1.innerHTML = '';
+  g1.style.display = state.rings.ring1 ? '' : 'none';
+  if (state.rings.ring1) {
+    RING_ORDER.forEach(pNum => {
+      const pd = base.palaces[pNum];
+      const isHit = (cres.byPalace[pNum] || []).length > 0 && !base.wuBuYuShi;
+      const isDayP = pNum === base.dayPalace;
+      const start = pd.center - 22.5, end = pd.center + 22.5;
+      const grp = svgEl('g', { class: 'palace-hit' });
+      grp.onclick = () => handlePalaceTap(pNum);
+
+      grp.appendChild(svgEl('path', {
+        d: sectorPath(cx, cy, 108, 264, start, end),
+        fill: isHit ? 'rgba(13, 34, 44, 0.90)' : (isDayP ? 'rgba(16, 28, 52, 0.90)' : 'rgba(10, 16, 30, 0.88)'),
+        stroke: isHit ? '#34d399' : (isDayP ? '#60a5fa' : 'rgba(226,190,103,0.48)'),
+        'stroke-width': isHit ? 2.2 : 1.5
+      }));
+
+      grp.appendChild(radialText(cx, cy, 240, pd.center, pd.god, {
+        fill: ['值符','太阴','六合','九天'].includes(pd.god) ? '#fde68a' : '#cbd5e1',
+        'font-size': 20, 'font-weight': '800'
+      }));
+
+      const starTxt = pd.star + (pd.hasQin ? '禽' : '');
+      grp.appendChild(radialText(cx, cy, 206, pd.center - 7, starTxt, {
+        fill: '#93c5fd', 'font-size': 17, 'font-weight': '700'
+      }));
+      const hStemTxt = pd.heavenStem + (pd.heavenJiStem ? pd.heavenJiStem : '');
+      grp.appendChild(radialText(cx, cy, 206, pd.center + 11, hStemTxt, {
+        fill: ['乙','丙','丁','戊'].includes(pd.heavenStem) ? '#34d399' : '#f8fafc',
+        'font-size': 22, 'font-weight': '900'
+      }));
+
+      const doorColor = ['开门','休门','生门'].includes(pd.door) ? '#34d399' : (pd.door === '景门' ? '#fbbf24' : '#f87171');
+      grp.appendChild(radialText(cx, cy, 166, pd.center - 7, pd.door, {
+        fill: doorColor, 'font-size': 22, 'font-weight': '900'
+      }));
+      const eStemTxt = pd.earthStem + (pd.earthJiStem ? pd.earthJiStem : '');
+      grp.appendChild(radialText(cx, cy, 166, pd.center + 11, eStemTxt, {
+        fill: '#9ca3af', 'font-size': 19, 'font-weight': '700'
+      }));
+
+      grp.appendChild(radialText(cx, cy, 128, pd.center, `${pd.gua}${pNum}`, {
+        fill: 'rgba(226,190,103,0.85)', 'font-size': 16, 'font-weight': '800'
+      }));
+
+      g1.appendChild(grp);
+    });
+  }
+
+  // 中五宫中心圆盘
+  const hub = document.getElementById('center-hub');
+  hub.innerHTML = '';
+  hub.appendChild(svgEl('circle', { cx, cy, r: 108, fill: 'url(#centerGlow)', stroke: '#e2be67', 'stroke-width': 2.5 }));
+  hub.appendChild(svgEl('text', { x:cx, y:cy-34, 'text-anchor':'middle', fill:'#e2be67', 'font-size':21, 'font-weight':800 },
+    `${base.juInfo.isYang ? '阳遁' : '阴遁'}${base.juInfo.juNumber}局`));
+  hub.appendChild(svgEl('text', { x:cx, y:cy-9, 'text-anchor':'middle', fill:'#6ee7b7', 'font-size':17, 'font-weight':800 },
+    `${typeMeta.icon} ${typeMeta.short}`));
+  hub.appendChild(svgEl('text', { x:cx, y:cy+17, 'text-anchor':'middle', fill:'#93c5fd', 'font-size':15.5, 'font-weight':700 },
+    `符:${base.zhiFuStar} 使:${base.zhiShiDoor}`));
+  hub.appendChild(svgEl('text', { x:cx, y:cy+43, 'text-anchor':'middle', fill:'#9ca3af', 'font-size':14.5 },
+    `日:${base.palaces[base.dayPalace].gua}${base.dayPalace} 空:${base.xunKongStr}`));
+}
+
+/* ============================================================================
+ * 六、HUD 刷新 & 动画循环
+ * ============================================================================ */
+function updateMetaBar() {
+  const b = state.baseChart, cr = state.cuijuRes;
+  if (!b || !cr) return;
+  const d = b.dateObj;
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const timeStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  let statusHtml = '';
+  if (b.wuBuYuShi) {
+    statusHtml = `<span class="tag-bad">⚠️ 五不遇时(${b.bazi.hGan}克${b.bazi.dGan}) 忌催局</span>`;
+  } else if (cr.bestMatch) {
+    const bm = cr.bestMatch;
+    const pObj = b.palaces[bm.p];
+    statusHtml = `<span style="color:#6ee7b7;font-weight:700">★ 布局首选:${pObj.dir}(${pObj.gua}${bm.p}·${bm.enhance.label}${bm.hasSiHai?'·有四害':''})</span>`;
+  } else {
+    statusHtml = `<span style="color:#fca5a5">本时辰无「${CUIJU_TYPES[state.cuijuType].short}」合格位，点下方热力图择吉时</span>`;
+  }
+
+  document.getElementById('meta-bar').innerHTML = `
+    <span>${timeStr}</span>
+    <span class="bazi">${b.bazi.y} ${b.bazi.m} ${b.bazi.d} ${b.bazi.h}</span>
+    <span>${b.juInfo.isYang?'阳':'阴'}${b.juInfo.juNumber}局(${b.juInfo.jqName}${b.juInfo.isLeapTerm?'·闰':''})</span>
+    ${statusHtml}
+  `;
+}
+
+function updateHeadingHUD() {
+  const info = getDirLookup(state.heading);
+  document.getElementById('hud-deg').textContent = `${info.deg.toFixed(1).padStart(5, '0')}°`;
+  const b = state.baseChart, cr = state.cuijuRes;
+  if (!b || !cr) return;
+  const pd = b.palaces[info.palaceNum];
+  const pMatches = cr.byPalace[info.palaceNum] || [];
+  const topM = pMatches[0] || null;
+  const isDayP = info.palaceNum === b.dayPalace;
+
+  document.getElementById('hud-dir').textContent = `${pd.dir} · ${pd.gua}${pd.num}宫`;
+  document.getElementById('hud-sub').textContent = `${info.shanObj.name}山(24山) · ${info.zhiObj.name}宫(12支)`;
+
+  let badgeHtml = `<span class="level-badge" style="background:#475569;color:#f3f4f6">非催局位</span>`;
+  let subLine = `${pd.god} · ${pd.star} · ${pd.door} · ${pd.heavenStem}/${pd.earthStem}`;
+
+  if (b.wuBuYuShi) {
+    badgeHtml = `<span class="level-badge" style="background:#ef4444;color:#fff">五不遇时</span>`;
+  } else if (topM) {
+    const bg = topM.hasSiHai ? '#f59e0b' : topM.enhance.color;
+    badgeHtml = `<span class="level-badge" style="background:${bg}">★ ${topM.enhance.label}·${topM.gradeLabel}</span>`;
+    subLine = `${topM.shortReason} · ${pd.door} ${pd.marks.length ? '⚠️'+pd.marks.join('') : '无四害'}`;
+  } else if (isDayP) {
+    badgeHtml = `<span class="level-badge" style="background:#60a5fa">日干受生位</span>`;
+    subLine = `自身宫(${b.bazi.dGan}) · ${pd.door} ${pd.marks.length ? '⚠️'+pd.marks.join('') : '洁净'}`;
+  }
+
+  document.getElementById('hud-eval').innerHTML = `
+    <div>${badgeHtml}</div>
+    <div style="color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${subLine}</div>
+  `;
+  document.getElementById('crack-warn').classList.toggle('show', info.nearBoundary);
+}
+
+function animateLoop() {
+  const diff = ((state.targetHeading - state.heading + 540) % 360) - 180;
+  if (Math.abs(diff) > 0.05) {
+    state.heading = normDeg(state.heading + diff * 0.22);
+    document.getElementById('wheel-group').setAttribute('transform', `rotate(${-state.heading.toFixed(2)} 500 500)`);
+    updateHeadingHUD();
+  }
+  updateDiagUI();
+  requestAnimationFrame(animateLoop);
+}
+
+function recomputeAndRender() {
+  if (typeof Solar === 'undefined') return;
+  state.baseChart = QimenEngine.generateBase(state.date, state.method);
+  state.cuijuRes = QimenEngine.evaluateCuiju(state.baseChart, state.cuijuType, state.gender);
+  renderCompassSVG();
+  updateMetaBar();
+  updateHeadingHUD();
+}
+
+function onCuijuTypeChange(val) {
+  state.cuijuType = parseInt(val, 10);
+  const gSel = document.getElementById('cuiju-gender-sel');
+  if (gSel) gSel.classList.toggle('show', state.cuijuType === 2);
+  scanState.lastScan = null;
+  recomputeAndRender();
+}
+function onGenderChange(val) {
+  state.gender = val;
+  scanState.lastScan = null;
+  recomputeAndRender();
+}
+
+/* ============================================================================
+ * 七、弹窗交互：本宫详批 / 催局择时热力图 / 当下可催雷达 / CSV 导出
+ * ============================================================================ */
+function openModal(title, html) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.remove('open');
+}
+
+function openCurrentPalaceDetail() {
+  const info = getDirLookup(state.heading);
+  openPalaceDetail(info.palaceNum);
+}
+
+function openPalaceDetail(pNum) {
+  const b = state.baseChart, cr = state.cuijuRes;
+  if (!b || !cr) return;
+  const pd = b.palaces[pNum];
+  const pMatches = cr.byPalace[pNum] || [];
+  const topM = pMatches[0] || null;
+  const beh = STEM_BEHAVIOR[pd.heavenStem] || STEM_BEHAVIOR['戊'];
+  const earthBeh = STEM_BEHAVIOR[pd.earthStem] || STEM_BEHAVIOR['戊'];
+  const typeMeta = CUIJU_TYPES[state.cuijuType];
+  const isDayP = pNum === b.dayPalace;
+
+  const cardClass = (topM && !b.wuBuYuShi) ? (topM.hasSiHai ? 'warn' : 'good') : (isDayP ? 'recv' : '');
+
+  const html = `
+    <div class="card ${cardClass}">
+      <div class="card-title">
+        <span>${pd.dir} · ${pd.gua}${pd.num}宫（五行${pd.elem}）</span>
+        ${topM && !b.wuBuYuShi
+          ? `<span class="level-badge" style="background:${topM.hasSiHai?'#f59e0b':topM.enhance.color}">${topM.enhance.label} · ${topM.gradeLabel}</span>`
+          : (isDayP ? `<span class="level-badge" style="background:#60a5fa">日干受生位</span>` : `<span class="pill">非当前催局位</span>`)
+        }
+      </div>
+      <div style="font-size:12px;color:var(--muted)">
+        24山：<strong>${pd.shan.join(' / ')}</strong>（中心 ${pd.center}°）｜12地支：<strong>${pd.zhi.join(' / ')}</strong>
+      </div>
+      <div class="pill-row">
+        <span class="pill y">八神: ${pd.god}</span>
+        <span class="pill y">九星: ${pd.star}${pd.hasQin?'(带天禽)':''}</span>
+        <span class="pill ${['开门','休门','生门'].includes(pd.door)?'g':'b'}">八门: ${pd.door}</span>
+        <span class="pill">天/地盘干: ${pd.heavenStem}${pd.heavenJiStem?'('+pd.heavenJiStem+')':''} / ${pd.earthStem}${pd.earthJiStem?'('+pd.earthJiStem+')':''}</span>
+        ${isDayP ? '<span class="pill c">日干(自身)</span>' : ''}
+        ${pNum === b.hourPalace ? '<span class="pill c">时干宫</span>' : ''}
+        ${pNum === b.zhiFuPalace ? '<span class="pill y">值符宫</span>' : ''}
+        ${pNum === b.zhiShiPalace ? '<span class="pill y">值使宫</span>' : ''}
+        ${pd.marks.length ? pd.marks.map(m => `<span class="pill b">⚠️ 四害:${m}</span>`).join('') : '<span class="pill g">✅ 本宫无四害</span>'}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>${typeMeta.icon} 当前催局评估：${typeMeta.name}</span></div>
+      ${b.wuBuYuShi ? `<div style="color:#fca5a5;margin-bottom:6px;">⚠️ 当前为五不遇时（${b.bazi.hGan}克${b.bazi.dGan}），规则已排除，不建议此时催局。</div>` : ''}
+      ${pMatches.length ? pMatches.map(m => `
+        <div style="padding:6px 0;border-bottom:1px dashed rgba(255,255,255,0.1);">
+          <div><strong>触发条件：</strong><span style="color:#6ee7b7">${m.reason}</span></div>
+          <div><strong>生克与受生：</strong>${m.rel} → ${m.receiverType} ${b.palaces[m.receiverPalace].dir}(${b.palaces[m.receiverPalace].gua}${m.receiverPalace}${m.recvMarks.length?'·遇'+m.recvMarks.join(''):''})</div>
+          <div><strong>增强等级：</strong>${m.enhance.full}</div>
+          <div style="font-size:12px;color:var(--muted)">日干门:${m.dayDoor} ｜ 时干门:${m.hourDoor} ｜ 用神门:${m.targetDoor}</div>
+        </div>
+      `).join('') : `<div style="color:var(--muted)">本宫未触发「${typeMeta.name}」用神条件。<br>${typeMeta.tip}</div>`}
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>🎨 室内布局物象参考（主取天盘「${pd.heavenStem}」）</span>
+        <span style="font-size:11.5px;color:#e5e7eb;"><i class="color-dot" style="background:${beh.colorHex}"></i>${beh.colorName}</span>
+      </div>
+      <div><strong>推荐摆件/物象：</strong>${beh.items}</div>
+      <div style="margin-top:4px"><strong>引动动作：</strong>${beh.actions}</div>
+      <div style="margin-top:4px;font-size:11.5px;color:var(--muted)"><strong>地盘呼应（${pd.earthStem}）：</strong>辅色 ${earthBeh.colorName} · ${earthBeh.items.split('、')[0]}</div>
+    </div>
+
+    <button type="button" class="btn-full" onclick="pointCompassTo(${pd.center});closeModal();">🧭 在模拟罗盘中指向此宫位（${pd.dir} ${pd.center}°）</button>
+  `;
+  openModal(`${pd.dir} · ${pd.gua}${pd.num}宫催局详批`, html);
+}
+
+function pointCompassTo(deg) {
+  if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+  sensorCtrl.rawDeg = deg;
+  sensorCtrl.compDeg = normDeg(deg + sensorCtrl.declination);
+  state.targetHeading = sensorCtrl.compDeg;
+  const slider = document.getElementById('sim-slider');
+  const simVal = document.getElementById('sim-val');
+  if (slider) slider.value = deg;
+  if (simVal) simVal.textContent = deg + '°';
+}
+
+/* ---------- 催局择时热力图 & 当下可催雷达 ---------- */
+let cjModalTab = 'scanner';
+const scanState = {
+  days: 30,
+  filter: 'no_sihai', // 'all' | 'no_sihai' | 'enh2plus' | 'top_only'
+  daytimeOnly: true,
+  selectedDay: null,
+  sortBy: 'grade',    // 'grade' | 'time'
+  pageSize: 20,
+  lastScan: null
+};
+
+function openCuijuModal(tab = cjModalTab) {
+  cjModalTab = tab;
+  const b = state.baseChart;
+  if (!b) return;
+
+  let body = `
+    <div class="tab-bar">
+      <button type="button" class="tab-btn ${cjModalTab==='scanner'?'active':''}" onclick="openCuijuModal('scanner')">📅 催局择时热力图</button>
+      <button type="button" class="tab-btn ${cjModalTab==='now_all'?'active':''}" onclick="openCuijuModal('now_all')">📡 当下可催雷达</button>
+    </div>
+  `;
+
+  if (cjModalTab === 'now_all') {
+    if (b.wuBuYuShi) {
+      body += `<div class="card bad"><strong>⚠️ 当前为五不遇时（${b.bazi.hGan}克${b.bazi.dGan}）</strong><br>九大催局规则均自动跳过五不遇时，请切到「催局择时热力图」挑选后续吉时。</div>`;
+    } else {
+      body += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">实时扫描当前盘（${b.bazi.d}日 ${b.bazi.h}时 · ${b.juInfo.isYang?'阳':'阴'}${b.juInfo.juNumber}局）可触发的催局类型，点击可直接切换罗盘视图：</div>`;
+      [8, 1, 3, 9, 7, 5, 6, 4, 2].forEach(tId => {
+        const res = QimenEngine.evaluateCuiju(b, tId, state.gender);
+        const meta = CUIJU_TYPES[tId];
+        const hasHit = res.matches.length > 0;
+        const bm = res.bestMatch;
+        body += `
+          <div class="card ${hasHit ? (bm.hasSiHai ? 'warn' : 'good') : ''}" style="cursor:pointer" onclick="switchToTypeAndFocus(${tId}, ${bm ? bm.p : b.dayPalace})">
+            <div class="card-title">
+              <span>${meta.icon} Type ${tId} · ${meta.name}</span>
+              ${hasHit
+                ? `<span class="level-badge" style="background:${bm.hasSiHai?'#f59e0b':bm.enhance.color}">命中 ${res.matches.length} 宫 · ${bm.enhance.label}</span>`
+                : `<span class="pill">本时无局</span>`
+              }
+            </div>
+            ${hasHit ? `
+              <div style="font-size:12px;color:#d1d5db">
+                首选：<strong style="color:var(--gold)">${b.palaces[bm.p].dir}(${b.palaces[bm.p].gua}${bm.p} · ${bm.targetDoor})</strong> ｜ ${bm.reason} ｜ ${bm.rel}
+                ${bm.hasSiHai ? '<span style="color:#fca5a5"> ⚠️有四害</span>' : '<span style="color:#6ee7b7"> ✅无四害</span>'}
+              </div>
+            ` : `<div style="font-size:11.5px;color:var(--muted)">${meta.tip}</div>`}
+          </div>
+        `;
+      });
+    }
+    openModal('📡 当下时辰 · 9大催局全扫描', body);
+    return;
+  }
+
+  // 择时热力图扫描器
+  body += `
+    <div class="card">
+      <div class="form-row">
+        <label>催局类型</label>
+        <select id="sc-type" onchange="onModalTypeChange(this.value)">
+          ${[8,1,3,9,7,5,6,4,2].map(id => `<option value="${id}" ${state.cuijuType===id?'selected':''}>Type ${id} · ${CUIJU_TYPES[id].name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row" id="sc-gender-row" style="${state.cuijuType===2?'':'display:none'}">
+        <label>催丁偏好</label>
+        <select id="sc-gender" onchange="state.gender=this.value;document.getElementById('cuiju-gender-sel').value=this.value;">
+          <option value="any" ${state.gender==='any'?'selected':''}>不限男女（时干子女）</option>
+          <option value="male" ${state.gender==='male'?'selected':''}>求男婴（丁奇）</option>
+          <option value="female" ${state.gender==='female'?'selected':''}>求女婴（癸水）</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>筛选标准</label>
+        <select id="sc-filter" onchange="scanState.filter=this.value">
+          <option value="top_only" ${scanState.filter==='top_only'?'selected':''}>极品天花板（三级增强/极品且无四害）</option>
+          <option value="enh2plus" ${scanState.filter==='enh2plus'?'selected':''}>强效精选（二级/三级增强或旺相极品）</option>
+          <option value="no_sihai" ${scanState.filter==='no_sihai'?'selected':''}>洁净无四害（用神与受生宫均无空迫墓刑）</option>
+          <option value="all" ${scanState.filter==='all'?'selected':''}>全部符合（与原脚本输出一致）</option>
+        </select>
+      </div>
+      <div class="form-row-2col">
+        <select id="sc-days" onchange="scanState.days=parseInt(this.value,10)">
+          <option value="14" ${scanState.days===14?'selected':''}>扫描未来 14 天</option>
+          <option value="30" ${scanState.days===30?'selected':''}>扫描未来 30 天（推荐）</option>
+          <option value="60" ${scanState.days===60?'selected':''}>扫描未来 60 天</option>
+          <option value="90" ${scanState.days===90?'selected':''}>扫描未来 90 天</option>
+        </select>
+        <select id="sc-hours" onchange="scanState.daytimeOnly=(this.value==='day')">
+          <option value="day" ${scanState.daytimeOnly?'selected':''}>常规操作 07-23点</option>
+          <option value="all" ${!scanState.daytimeOnly?'selected':''}>全天 24 小时（含深夜）</option>
+        </select>
+      </div>
+      <button type="button" class="btn-full" onclick="runCuijuScan()">🔥 生成催局热力图并筛选好时辰</button>
+    </div>
+    <div id="sc-results"></div>
+  `;
+  openModal('🔥 奇门催局 · 择时热力图', body);
+
+  if (scanState.lastScan && scanState.lastScan.cuijuType === state.cuijuType && scanState.lastScan.method === state.method) {
+    renderCuijuScanResults();
+  } else {
+    runCuijuScan();
+  }
+}
+
+function onModalTypeChange(val) {
+  const id = parseInt(val, 10);
+  state.cuijuType = id;
+  document.getElementById('cuiju-type-sel').value = String(id);
+  const gRow = document.getElementById('sc-gender-row');
+  if (gRow) gRow.style.display = id === 2 ? 'flex' : 'none';
+  const gTop = document.getElementById('cuiju-gender-sel');
+  if (gTop) gTop.classList.toggle('show', id === 2);
+  recomputeAndRender();
+}
+
+function switchToTypeAndFocus(tId, pNum) {
+  onModalTypeChange(tId);
+  pointCompassTo(PALACE_META[pNum].center);
+  closeModal();
+}
+
+function fmtDayKey(d) {
+  const pad = n => (n < 10 ? '0' : '') + n;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function runCuijuScan() {
+  const fltEl = document.getElementById('sc-filter');
+  const daysEl = document.getElementById('sc-days');
+  const hrsEl = document.getElementById('sc-hours');
+  if (fltEl) scanState.filter = fltEl.value;
+  if (daysEl) scanState.days = parseInt(daysEl.value, 10) || 30;
+  if (hrsEl) scanState.daytimeOnly = (hrsEl.value === 'day');
+
+  scanState.selectedDay = null;
+  scanState.pageSize = 20;
+
+  const scanHours = scanState.daytimeOnly
+    ? [8, 10, 12, 14, 16, 18, 20, 22]
+    : [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+
+  const anchor = new Date(state.date.getTime());
+  const minTs = anchor.getTime() - 3600 * 1000;
+  const baseY = anchor.getFullYear(), baseM = anchor.getMonth(), baseD = anchor.getDate();
+
+  const daysList = [];
+  const allMatches = [];
+
+  for (let dOff = 0; dOff < scanState.days; dOff++) {
+    const dayDate = new Date(baseY, baseM, baseD + dOff, 12, 0, 0, 0);
+    const dayKey = fmtDayKey(dayDate);
+    const dayMatches = [];
+    const distinctSlots = new Set();
+    let topCount = 0, heatScore = 0;
+
+    for (let hi = 0; hi < scanHours.length; hi++) {
+      const h = scanHours[hi];
+      const t = new Date(baseY, baseM, baseD + dOff, h, 0, 0, 0);
+      if (t.getTime() < minTs) continue;
+
+      const base = QimenEngine.generateBase(t, state.method);
+      if (base.wuBuYuShi) continue;
+
+      const res = QimenEngine.evaluateCuiju(base, state.cuijuType, state.gender);
+      if (!res.matches.length) continue;
+
+      let bestSlotScore = 0;
+      res.matches.forEach(m => {
+        if (scanState.filter === 'no_sihai' && m.hasSiHai) return;
+        if (scanState.filter === 'enh2plus' && m.enhance.tier < 2 && m.grade > 1) return;
+        if (scanState.filter === 'top_only') {
+          if (m.hasSiHai) return;
+          if (state.cuijuType === 8 && m.grade > 1 && m.enhance.tier < 3) return;
+          if (state.cuijuType !== 2 && state.cuijuType !== 8 && m.enhance.tier < 3) return;
+        }
+
+        const item = {
+          dayKey,
+          ts: t.getTime(),
+          date: t,
+          hour: h,
+          hZhi: base.bazi.hZhi,
+          baziStr: `${base.bazi.y} ${base.bazi.m} ${base.bazi.d} ${base.bazi.h}`,
+          juText: `${base.juInfo.isYang?'阳':'阴'}${base.juInfo.juNumber}局`,
+          targetPalaceObj: base.palaces[m.p],
+          recvPalaceObj: base.palaces[m.receiverPalace],
+          match: m
+        };
+        dayMatches.push(item);
+        allMatches.push(item);
+        distinctSlots.add(h);
+
+        const isStar = (!m.hasSiHai) && (m.enhance.tier === 3 || m.grade === 1);
+        const sWeight = isStar ? 3 : (m.enhance.tier >= 2 && !m.hasSiHai ? 2 : 1);
+        if (sWeight > bestSlotScore) bestSlotScore = sWeight;
+      });
+
+      if (bestSlotScore >= 3) { topCount++; heatScore += 3; }
+      else if (bestSlotScore === 2) { heatScore += 2; }
+      else if (bestSlotScore === 1) { heatScore += 1; }
+    }
+
+    daysList.push({
+      dayKey, date: dayDate,
+      month: dayDate.getMonth() + 1, day: dayDate.getDate(), weekday: dayDate.getDay(),
+      slotCount: distinctSlots.size,
+      matchCount: dayMatches.length,
+      topCount,
+      heatScore,
+      matches: dayMatches
+    });
+  }
+
+  const maxScore = Math.max(1, ...daysList.map(d => d.heatScore));
+  daysList.forEach(d => {
+    if (d.slotCount === 0) { d.heatClass = 'h0'; return; }
+    const ratio = d.heatScore / maxScore;
+    if (ratio >= 0.78 && (d.topCount >= 1 || d.slotCount >= 4)) d.heatClass = 'h4';
+    else if (ratio >= 0.50) d.heatClass = 'h3';
+    else if (ratio >= 0.24) d.heatClass = 'h2';
+    else d.heatClass = 'h1';
+  });
+
+  const topDays = [...daysList]
+    .filter(d => d.slotCount > 0)
+    .sort((a, b) => (b.heatScore - a.heatScore) || (b.topCount - a.topCount) || (b.slotCount - a.slotCount))
+    .slice(0, 3);
+
+  scanState.lastScan = {
+    cuijuType: state.cuijuType,
+    method: state.method,
+    daysSpan: scanState.days,
+    daysList,
+    allMatches,
+    topDays
+  };
+  renderCuijuScanResults();
+}
+
+function selectScanDay(dayKey) {
+  scanState.selectedDay = (scanState.selectedDay === dayKey) ? null : dayKey;
+  scanState.pageSize = 20;
+  renderCuijuScanResults();
+}
+function setScanSort(mode) {
+  scanState.sortBy = mode;
+  renderCuijuScanResults();
+}
+function loadMoreScan() {
+  scanState.pageSize += 20;
+  renderCuijuScanResults();
+}
+
+function renderCuijuScanResults() {
+  const box = document.getElementById('sc-results');
+  const scan = scanState.lastScan;
+  if (!box || !scan) return;
+
+  const { daysList, allMatches, topDays, daysSpan } = scan;
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+  const typeMeta = CUIJU_TYPES[scan.cuijuType];
+
+  const firstDow = daysList.length ? ((daysList[0].weekday + 6) % 7) : 0;
+  let cellsHtml = '';
+  for (let i = 0; i < firstDow; i++) cellsHtml += `<div class="hm-cell empty"></div>`;
+  daysList.forEach(d => {
+    const isSel = scanState.selectedDay === d.dayKey;
+    const dayLabel = d.day === 1 ? `${d.month}/1` : String(d.day);
+    const cntLabel = d.slotCount > 0 ? `${d.slotCount}时` : '-';
+    const star = d.topCount > 0 ? `<span class="hm-star">★</span>` : '';
+    cellsHtml += `
+      <div class="hm-cell ${d.heatClass} ${isSel ? 'selected' : ''}" onclick="selectScanDay('${d.dayKey}')">
+        ${star}
+        <span class="hm-day-num">${dayLabel}</span>
+        <span class="hm-cnt">${cntLabel}</span>
+      </div>
+    `;
+  });
+
+  const topHtml = topDays.length
+    ? `<div class="hm-topdays">
+         <span style="font-size:11px;color:var(--muted);align-self:center;">🏆 最佳催局日：</span>
+         ${topDays.map(d => `
+           <button type="button" class="hm-top-pill ${scanState.selectedDay===d.dayKey?'sel':''}" onclick="selectScanDay('${d.dayKey}')">
+             ${d.month}/${d.day}(${weekdays[d.weekday].slice(1)}) ${d.slotCount}时${d.topCount?`·${d.topCount}极品`:''}
+           </button>
+         `).join('')}
+       </div>`
+    : '';
+
+  const totalGoodDays = daysList.filter(d => d.slotCount > 0).length;
+
+  let html = `
+    <div class="hm-card">
+      <div class="hm-top">
+        <span class="hm-title">🗓️ ${typeMeta.name} · 未来${daysSpan}天热力图（${totalGoodDays}天有局 · ${allMatches.length}条）</span>
+        <span class="hm-legend">
+          少
+          <i style="background:rgba(255,255,255,0.08)"></i>
+          <i style="background:rgba(16,185,129,0.22)"></i>
+          <i style="background:rgba(16,185,129,0.45)"></i>
+          <i style="background:linear-gradient(135deg,#10b981,#e2be67)"></i>
+          多(★极品)
+        </span>
+      </div>
+      ${topHtml}
+      <div class="hm-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="hm-grid">${cellsHtml}</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:6px;text-align:center;">
+        点击任意日期格筛选当天催局时辰，再次点击恢复全部
+      </div>
+    </div>
+  `;
+
+  let list = scanState.selectedDay
+    ? (daysList.find(d => d.dayKey === scanState.selectedDay)?.matches || [])
+    : allMatches;
+
+  list = [...list].sort((a, b) => {
+    if (scanState.sortBy === 'grade') {
+      if (b.match.score !== a.match.score) return b.match.score - a.match.score;
+      return a.ts - b.ts;
+    }
+    return a.ts - b.ts;
+  });
+
+  const selTitle = scanState.selectedDay
+    ? `📅 ${scanState.selectedDay}（${list.length} 条）`
+    : `📋 全部催局吉时（${list.length} 条）`;
+
+  html += `
+    <div class="res-toolbar">
+      <span><strong>${selTitle}</strong></span>
+      <div class="res-toolbar-btns">
+        ${scanState.selectedDay ? `<button type="button" class="mini-btn" onclick="selectScanDay(null)">全部</button>` : ''}
+        <button type="button" class="mini-btn ${scanState.sortBy==='grade'?'active':''}" onclick="setScanSort('grade')">按强弱</button>
+        <button type="button" class="mini-btn ${scanState.sortBy==='time'?'active':''}" onclick="setScanSort('time')">按时间</button>
+        ${allMatches.length ? `<button type="button" class="mini-btn" onclick="exportCuijuCSV()">💾 CSV</button>` : ''}
+      </div>
+    </div>
+  `;
+
+  if (!list.length) {
+    html += `<div class="card warn">当前筛选条件下未命中催局时辰，可尝试把筛选标准放宽为「洁净无四害」或「全部符合」，或增大扫描天数。</div>`;
+    box.innerHTML = html;
+    return;
+  }
+
+  const visible = list.slice(0, scanState.pageSize);
+  html += visible.map((r, idx) => {
+    const d = r.date, h = r.hour, m = r.match;
+    const startH = h === 0 ? 23 : (h % 2 === 0 ? h - 1 : h);
+    const endH = (startH + 2) % 24;
+    const timeLbl = `${d.getMonth()+1}月${d.getDate()}日(${weekdays[d.getDay()]}) ${r.hZhi}时 ${pad(startH)}:00-${pad(endH)}:00`;
+    const tp = r.targetPalaceObj, rp = r.recvPalaceObj;
+    const beh = STEM_BEHAVIOR[tp.heavenStem] || STEM_BEHAVIOR['戊'];
+    const badgeBg = m.hasSiHai ? '#f59e0b' : m.enhance.color;
+
+    return `
+      <div class="card ${m.hasSiHai ? 'warn' : 'good'}">
+        <div class="card-title">
+          <span style="font-size:12.5px">#${idx+1} ${timeLbl}</span>
+          <span class="level-badge" style="background:${badgeBg}">${m.enhance.label} · ${m.gradeLabel}</span>
+        </div>
+        <div style="font-size:12px;color:#d1d5db">
+          布局位：<strong style="color:var(--gold)">${tp.dir}(${tp.gua}${tp.num}${m.targetMarks.length?'·遇'+m.targetMarks.join(''):''})</strong> · 用神门:${m.targetDoor} · ${r.juText}<br>
+          受生位：${m.receiverType} ${rp.dir}(${rp.gua}${rp.num}${m.recvMarks.length?'·遇'+m.recvMarks.join(''):''}) ｜ 日门:${m.dayDoor} 时门:${m.hourDoor}<br>
+          <span style="color:#6ee7b7">${m.reason}</span>（${m.rel}）
+        </div>
+        <div class="mini-beh">
+          <i class="color-dot" style="background:${beh.colorHex}"></i>${beh.colorName} ｜ 摆件：${beh.items.split('、').slice(0,2).join('、')}
+        </div>
+        <button type="button" style="margin-top:7px;padding:5px 10px;border-radius:6px;border:1px solid var(--gold);background:rgba(226,190,103,0.16);color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;"
+          onclick="jumpToCuijuTime(${r.ts}, ${tp.num})">🎯 切到此吉时并指向布局位（${tp.dir}）</button>
+      </div>
+    `;
+  }).join('');
+
+  if (list.length > visible.length) {
+    html += `<button type="button" class="btn-ghost" onclick="loadMoreScan()">▼ 加载更多（已显示 ${visible.length} / ${list.length} 条）</button>`;
+  }
+
+  box.innerHTML = html;
+}
+
+function jumpToCuijuTime(ts, targetP) {
+  state.date = new Date(ts);
+  recomputeAndRender();
+  pointCompassTo(PALACE_META[targetP].center);
+  closeModal();
+}
+
+function exportCuijuCSV() {
+  const scan = scanState.lastScan;
+  if (!scan || !scan.allMatches.length) return;
+  const rows = [...scan.allMatches].sort((a, b) => b.match.score - a.match.score);
+  const esc = s => `"${String(s || '').replace(/"/g, '""')}"`;
+
+  let csv = '日期,时间,八字,局数,评级,值符值使增强等级,日干门,时干门,用神门,受生宫位,布局宫位,触发条件,生克与四害\n';
+  rows.forEach(r => {
+    const m = r.match, tp = r.targetPalaceObj, rp = r.recvPalaceObj;
+    const tStr = `${tp.gua}${tp.num}(${tp.dir})${m.targetMarks.length?'(遇'+m.targetMarks.join('')+')':''}`;
+    const rStr = `${m.receiverType} ${rp.gua}${rp.num}(${rp.dir})${m.recvMarks.length?'(遇'+m.recvMarks.join('')+')':''}`;
+    csv += [
+      r.dayKey,
+      `${r.hZhi}时(${r.hour}:00)`,
+      r.baziStr,
+      r.juText,
+      m.gradeLabel,
+      m.enhance.full,
+      m.dayDoor,
+      m.hourDoor,
+      m.targetDoor,
+      rStr,
+      tStr,
+      m.reason,
+      m.rel
+    ].map(esc).join(',') + '\n';
+  });
+
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `cuiju_type${scan.cuijuType}_${scan.method}_${scan.daysSpan}d.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* 时间控制 */
+function openTimeModal() {
+  const d = state.date;
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const localVal = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const html = `
+    <div class="card">
+      <div class="form-row">
+        <label>公历时间</label>
+        <input type="datetime-local" id="dt-input" value="${localVal}">
+      </div>
+      <button type="button" class="btn-full" onclick="applyCustomTime()">确认排盘</button>
+    </div>
+  `;
+  openModal('📅 自选排盘时间（时家催局）', html);
+}
+function applyCustomTime() {
+  const val = document.getElementById('dt-input').value;
+  if (val) {
+    state.date = new Date(val);
+    scanState.lastScan = null;
+    recomputeAndRender();
+  }
+  closeModal();
+}
+function stepHour(delta) {
+  state.date = new Date(state.date.getTime() + delta * 3600 * 1000);
+  recomputeAndRender();
+}
+function resetToNow() {
+  state.date = new Date();
+  scanState.lastScan = null;
+  recomputeAndRender();
+}
+
+function toggleLabelMode() {
+  state.labelMode = state.labelMode === 'cuiju' ? 'fengshui' : 'cuiju';
+  document.getElementById('btn-label-mode').textContent = state.labelMode === 'cuiju' ? 'R3: 催局用神' : 'R3: 布局物象';
+  renderCompassSVG();
+}
+function toggleTilt3D() {
+  state.tilt3D = !state.tilt3D;
+  document.getElementById('compass-shell').classList.toggle('tilt-3d', state.tilt3D);
+  document.getElementById('btn-tilt').classList.toggle('on', state.tilt3D);
+}
+
+/* ============================================================================
+ * 八、手势拖拽旋转 & 事件绑定初始化
+ * ============================================================================ */
+function initInteractions() {
+  document.querySelectorAll('#method-seg button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#method-seg button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.method = btn.dataset.m;
+      scanState.lastScan = null;
+      recomputeAndRender();
+    };
+  });
+
+  document.querySelectorAll('#ring-toggles .chip[data-ring]').forEach(btn => {
+    btn.onclick = () => {
+      const k = btn.dataset.ring;
+      state.rings[k] = !state.rings[k];
+      btn.classList.toggle('on', state.rings[k]);
+      renderCompassSVG();
+    };
+  });
+
+  const slider = document.getElementById('sim-slider');
+  const simVal = document.getElementById('sim-val');
+  slider.oninput = () => {
+    if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+    const raw = parseFloat(slider.value);
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    simVal.textContent = `${raw.toFixed(1)}°`;
+  };
+
+  const stage = document.getElementById('compass-stage');
+  let dragging = false, startAngle = 0, startRaw = 0, startX = 0, startY = 0;
+  function getPointerAngle(e) {
+    const rect = stage.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const pt = e.touches ? e.touches[0] : e;
+    return Math.atan2(pt.clientY - cy, pt.clientX - cx) * (180 / Math.PI);
+  }
+  stage.addEventListener('pointerdown', e => {
+    state.dragMoved = false;
+    if (state.sensorActive) return;
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startAngle = getPointerAngle(e);
+    startRaw = sensorCtrl.rawDeg;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 6) state.dragMoved = true;
+    const delta = getPointerAngle(e) - startAngle;
+    const raw = normDeg(startRaw - delta);
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    slider.value = raw;
+    simVal.textContent = `${raw.toFixed(1)}°`;
+  });
+  window.addEventListener('pointerup', () => {
+    dragging = false;
+    setTimeout(() => { state.dragMoved = false; }, 50);
+  });
+
+  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!isSecure) document.getElementById('https-banner').classList.add('show');
+  syncSensorDockUI();
+}
+
+window.__onLunarReady = function() {
+  recomputeAndRender();
+};
+
+window.addEventListener('DOMContentLoaded', () => {
+  initInteractions();
+  if (typeof Solar !== 'undefined') recomputeAndRender();
+  requestAnimationFrame(animateLoop);
+});
+</script>
+</body>
+</html>
