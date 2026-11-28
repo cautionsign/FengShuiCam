@@ -1,0 +1,1920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Cyber Zen · 空间节律与正念行动 AR 指南</title>
+<!-- 优先读取同目录离线 lunar.js，失败自动回退 CDN -->
+<script src="./lunar.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.12/lunar.min.js';s.onload=function(){window.__onLunarReady&&window.__onLunarReady();};document.head.appendChild(s);"></script>
+<style>
+  :root {
+    --bg: #070c14;
+    --panel: rgba(13, 20, 34, 0.84);
+    --panel-solid: #0d1422;
+    --border: rgba(148, 163, 184, 0.22);
+    --accent: #34d399;
+    --accent-soft: rgba(52, 211, 153, 0.16);
+    --gold: #e5c376;
+    --cyan: #38bdf8;
+    --text: #f3f4f6;
+    --muted: #94a3b8;
+    --warn: #fbbf24;
+    --low: #64748b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  /* 摄像头底层 */
+  #camera-video {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; z-index: 0; display: none;
+    filter: brightness(0.76) contrast(1.04);
+  }
+  #camera-video.active { display: block; }
+  #bg-ambient {
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(circle at 50% 44%, rgba(16, 185, 129, 0.14) 0%, rgba(15, 23, 42, 0.92) 55%, #070c14 100%);
+    transition: opacity .35s;
+  }
+  #bg-ambient.ar-on { opacity: 0.22; }
+
+  #toast {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.95);
+    z-index: 90; pointer-events: none; opacity: 0;
+    background: rgba(13, 20, 34, 0.94); border: 1px solid var(--accent);
+    color: #a7f3d0; padding: 9px 16px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 700; text-align: center;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.6); max-width: 88vw;
+    transition: opacity .22s ease, transform .22s ease;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+  /* 顶部 HUD */
+  .top-hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    padding: calc(env(safe-area-inset-top, 8px) + 6px) 12px 8px;
+    background: linear-gradient(180deg, rgba(7,12,20,0.95) 0%, rgba(7,12,20,0.72) 82%, transparent 100%);
+    pointer-events: none;
+  }
+  .top-hud > * { pointer-events: auto; }
+  .hud-top-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 800; letter-spacing: 0.5px; color: #f8fafc;
+  }
+  .brand-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+  }
+  .icon-pill {
+    background: var(--panel); border: 1px solid var(--border);
+    color: #e2e8f0; border-radius: 999px; padding: 4px 10px;
+    font-size: 11px; font-weight: 600; cursor: pointer; backdrop-filter: blur(8px);
+  }
+
+  /* 痛点/目标选择器 */
+  .goal-strip {
+    margin-top: 8px; display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .goal-strip::-webkit-scrollbar { display: none; }
+  .goal-chip {
+    flex: 0 0 auto; background: var(--panel); border: 1px solid rgba(255,255,255,0.12);
+    color: var(--muted); border-radius: 999px; padding: 5px 11px;
+    font-size: 12px; font-weight: 600; cursor: pointer; backdrop-filter: blur(8px);
+    transition: all .18s;
+  }
+  .goal-chip.active {
+    background: var(--accent-soft); border-color: var(--accent); color: #a7f3d0;
+  }
+
+  /* 状态与实时朝向卡片 */
+  .status-banner {
+    margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px; padding: 7px 11px; backdrop-filter: blur(10px);
+    cursor: pointer;
+  }
+  .status-left { display: flex; align-items: baseline; gap: 8px; }
+  .hud-deg { font-size: 21px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+  .hud-dir { font-size: 12.5px; font-weight: 700; color: var(--accent); }
+  .hud-time-sub { font-size: 10.5px; color: var(--muted); }
+  .status-right { text-align: right; font-size: 11px; line-height: 1.38; max-width: 56%; }
+  .score-pill {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-weight: 800; font-size: 11px; color: #061018;
+  }
+
+  .notice-bar {
+    margin-top: 5px; font-size: 11px; border-radius: 8px; padding: 4px 10px;
+    text-align: center; display: none;
+  }
+  .notice-bar.show { display: block; }
+  .notice-bar.calm { background: rgba(251,191,36,0.16); border: 1px solid rgba(251,191,36,0.45); color: #fde68a; }
+  .notice-bar.edge { background: rgba(56,189,248,0.16); border: 1px solid rgba(56,189,248,0.45); color: #bae6fd; }
+
+  /* 罗盘舞台 */
+  .compass-stage {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    padding-top: 142px; padding-bottom: 132px;
+    touch-action: none;
+  }
+  .compass-shell {
+    position: relative;
+    width: min(90vw, 56vh, 470px);
+    height: min(90vw, 56vh, 470px);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.35s ease;
+  }
+  .compass-shell.tilt-3d { transform: perspective(900px) rotateX(26deg) scale(1.03); }
+
+  .lubber-line {
+    position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+    z-index: 12; pointer-events: none;
+  }
+  .lubber-tri {
+    width: 0; height: 0;
+    border-left: 8px solid transparent; border-right: 8px solid transparent;
+    border-top: 13px solid var(--accent);
+    filter: drop-shadow(0 0 8px rgba(52,211,153,0.9));
+  }
+  .lubber-stem {
+    width: 2px; height: 47%; position: absolute; top: 4px; left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, rgba(52,211,153,0.8), rgba(52,211,153,0.05));
+    pointer-events: none; z-index: 11;
+  }
+
+  #compass-svg {
+    width: 100%; height: 100%; overflow: visible;
+    filter: drop-shadow(0 10px 28px rgba(0,0,0,0.6));
+  }
+  #wheel-group { transform-origin: 0 0; }
+  .sector-hit { cursor: pointer; transition: opacity .15s; }
+  .sector-hit:hover { opacity: 0.9; }
+
+  /* 底部控制坞 */
+  .bottom-dock {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    padding: 6px 12px calc(env(safe-area-inset-bottom, 8px) + 10px);
+    background: linear-gradient(0deg, rgba(7,12,20,0.97) 0%, rgba(7,12,20,0.84) 76%, transparent 100%);
+  }
+  .sim-bar {
+    display: none; align-items: center; gap: 8px; margin-bottom: 6px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px 10px; font-size: 11px; color: #a7f3d0;
+  }
+  .sim-bar.show { display: flex; }
+  .sim-bar input[type=range] { flex: 1; accent-color: var(--accent); }
+
+  .time-row { display: flex; gap: 6px; margin-bottom: 7px; }
+  .time-row button {
+    flex: 1; background: var(--panel); border: 1px solid rgba(255,255,255,0.12);
+    color: #e2e8f0; border-radius: 9px; padding: 6px 4px; font-size: 11px;
+    cursor: pointer; font-weight: 600;
+  }
+  .time-row button.now-btn { color: var(--accent); border-color: rgba(52,211,153,0.4); }
+
+  .action-row { display: grid; grid-template-columns: 1fr 1fr 1.35fr 1.25fr; gap: 7px; }
+  .dock-btn {
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.14);
+    color: var(--text); border-radius: 12px; padding: 8px 4px;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    backdrop-filter: blur(8px);
+  }
+  .dock-btn.primary {
+    background: linear-gradient(135deg, #10b981, #34d399);
+    color: #051310; border-color: #34d399;
+  }
+  .dock-btn.gold {
+    background: rgba(229, 195, 118, 0.16); border-color: rgba(229, 195, 118, 0.55); color: var(--gold);
+  }
+  .dock-btn.active { border-color: var(--accent); color: var(--accent); }
+  .dock-btn span.ico { font-size: 15px; line-height: 1; }
+
+  /* 通用抽屉 */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.66);
+    display: none; align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(5px);
+  }
+  .modal-backdrop.open { display: flex; }
+  .sheet {
+    width: 100%; max-width: 520px; max-height: 86vh;
+    background: var(--panel-solid); border: 1px solid rgba(255,255,255,0.14);
+    border-bottom: none; border-radius: 20px 20px 0 0;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 -10px 35px rgba(0,0,0,0.65);
+  }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .sheet-head h3 { margin: 0; font-size: 15.5px; color: #f8fafc; }
+  .sheet-close {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.06); color: #fff; cursor: pointer; font-size: 14px;
+  }
+  .sheet-body {
+    padding: 13px 16px 28px; overflow-y: auto; font-size: 13px; line-height: 1.65;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px; padding: 11px 13px; margin-bottom: 10px;
+  }
+  .card.peak { border-color: rgba(52,211,153,0.55); background: rgba(16,185,129,0.09); }
+  .card.good { border-color: rgba(56,189,248,0.45); background: rgba(56,189,248,0.07); }
+  .card.warn { border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.07); }
+  .card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 5px; gap: 8px; }
+
+  .step-box {
+    display: flex; gap: 10px; padding: 9px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.09);
+  }
+  .step-box:last-child { border-bottom: none; padding-bottom: 2px; }
+  .step-num {
+    flex: 0 0 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    color: #a7f3d0; font-size: 12px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  }
+  .step-content { flex: 1; font-size: 12.5px; color: #e2e8f0; }
+  .step-content strong { color: #fff; }
+
+  .color-dot {
+    display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.55); vertical-align: middle; margin-right: 4px;
+  }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: rgba(255,255,255,0.07); color: #cbd5e1;
+  }
+  .tag.hi { background: rgba(52,211,153,0.18); color: #a7f3d0; border: 1px solid rgba(52,211,153,0.38); }
+
+  /* 专注倒计时盒 */
+  .timer-box {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: rgba(16,185,129,0.1); border: 1px solid rgba(52,211,153,0.4);
+    border-radius: 12px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .timer-display { font-size: 22px; font-weight: 800; color: #a7f3d0; font-variant-numeric: tabular-nums; }
+  .timer-btns { display: flex; gap: 6px; }
+  .timer-btns button {
+    padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(52,211,153,0.5);
+    background: rgba(52,211,153,0.16); color: #ecfdf5; font-size: 11.5px; font-weight: 700; cursor: pointer;
+  }
+  .timer-btns button.stop { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #cbd5e1; }
+
+  .btn-full {
+    width: 100%; padding: 10px; border-radius: 11px; border: none;
+    background: linear-gradient(135deg, #10b981, #34d399); color: #051310;
+    font-weight: 800; font-size: 13px; cursor: pointer;
+  }
+  .btn-ghost {
+    width: 100%; padding: 8px; border-radius: 9px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.16);
+    color: #a7f3d0; font-weight: 700; font-size: 12px; margin-top: 4px;
+  }
+
+  .form-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+  .form-row label { font-size: 12px; color: var(--muted); min-width: 60px; }
+  .form-row select, .form-row input {
+    flex: 1; background: #141d31; color: #fff; border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 8px; padding: 7px 10px; font-size: 12.5px;
+  }
+  .form-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .form-row-2col select {
+    width: 100%; background: #141d31; color: #fff; border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 8px; padding: 7px 8px; font-size: 12px;
+  }
+
+  /* 热力图 */
+  .hm-card {
+    background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(52,211,153,0.3);
+    border-radius: 12px; padding: 10px 10px 12px; margin-bottom: 10px;
+  }
+  .hm-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px; flex-wrap: wrap; }
+  .hm-title { font-size: 12.5px; font-weight: 800; color: #a7f3d0; }
+  .hm-legend { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--muted); }
+  .hm-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+  .hm-topdays { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .hm-top-pill {
+    font-size: 11px; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+    background: rgba(52,211,153,0.16); border: 1px solid rgba(52,211,153,0.45);
+    color: #a7f3d0; font-weight: 700;
+  }
+  .hm-top-pill.sel { background: var(--accent); color: #051310; border-color: var(--accent); }
+  .hm-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+  .hm-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .hm-cell {
+    position: relative; border-radius: 7px; padding: 5px 2px 4px;
+    text-align: center; cursor: pointer; min-height: 42px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,0.06); transition: transform .12s;
+  }
+  .hm-cell.empty { background: transparent; border: none; cursor: default; }
+  .hm-cell.h0 { background: rgba(255,255,255,0.03); color: #64748b; }
+  .hm-cell.h1 { background: rgba(52,211,153,0.14); color: #a7f3d0; border-color: rgba(52,211,153,0.26); }
+  .hm-cell.h2 { background: rgba(52,211,153,0.30); color: #ecfdf5; border-color: rgba(52,211,153,0.48); }
+  .hm-cell.h3 { background: rgba(52,211,153,0.50); color: #ffffff; border-color: rgba(52,211,153,0.75); }
+  .hm-cell.h4 { background: linear-gradient(135deg, rgba(16,185,129,0.82), rgba(56,189,248,0.62)); color: #ffffff; border-color: #a7f3d0; }
+  .hm-cell.selected { outline: 2px solid #fff; transform: scale(1.05); z-index: 2; }
+  .hm-day-num { font-size: 11px; font-weight: 800; line-height: 1.1; }
+  .hm-cnt { font-size: 9.5px; opacity: 0.92; margin-top: 2px; line-height: 1; }
+  .hm-star { position: absolute; top: 2px; right: 3px; font-size: 8px; color: #fde68a; line-height: 1; }
+
+  .res-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 8px 0; flex-wrap: wrap; font-size: 11.5px; color: #d1d5db; }
+  .mini-btn {
+    padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.05); color: #d1d5db;
+  }
+  .mini-btn.active { border-color: var(--accent); color: #a7f3d0; background: var(--accent-soft); }
+
+  /* 校准与设置抽屉 */
+  .diag-backdrop {
+    position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.68);
+    display: none; align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(5px);
+  }
+  .diag-backdrop.open { display: flex; }
+  .diag-sheet {
+    width: 100%; max-width: 520px; max-height: 86vh; overflow-y: auto;
+    background: #0d131f; border: 1px solid rgba(255,255,255,0.16); border-bottom: none;
+    border-radius: 18px 18px 0 0; padding: 16px 16px 24px;
+    box-shadow: 0 -10px 35px rgba(0,0,0,0.7);
+  }
+  .diag-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .diag-head h3 { margin: 0; font-size: 15.5px; color: #a7f3d0; }
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .diag-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 12px; }
+  .diag-box .k { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .diag-box .v { font-size: 15.5px; font-weight: 800; color: #a7f3d0; font-variant-numeric: tabular-nums; }
+  .diag-slider-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #d1d5db; margin-bottom: 6px; }
+  .diag-slider-row .val { color: #a7f3d0; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #diag-dec-slider { width: 100%; accent-color: var(--accent); margin-bottom: 14px; }
+  .diag-sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .diag-ch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .diag-ch-btn {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.14);
+    color: #e5e7eb; border-radius: 9px; padding: 9px 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .diag-ch-btn.full { grid-column: 1 / -1; }
+  .diag-ch-btn.active { background: rgba(16, 185, 129, 0.22); border-color: #10b981; color: #6ee7b7; }
+  .diag-waterfall-btn {
+    width: 100%; padding: 10px; border-radius: 10px; cursor: pointer;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    color: #a7f3d0; font-size: 13px; font-weight: 700; margin-bottom: 12px;
+  }
+  .diag-foot { font-size: 11px; color: var(--muted); line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<video id="camera-video" autoplay playsinline muted></video>
+<div id="bg-ambient"></div>
+<div id="toast"></div>
+
+<!-- 顶部 HUD -->
+<div class="top-hud">
+  <div class="hud-top-row">
+    <div class="brand"><span class="brand-dot"></span><span>Cyber Zen · 空间节律指南</span></div>
+    <div style="display:flex;gap:6px;">
+      <button type="button" class="icon-pill" id="btn-tilt" onclick="toggleTilt3D()">3D视角</button>
+      <button type="button" class="icon-pill" onclick="openDiagModal()">⚙️ 校准/设置</button>
+    </div>
+  </div>
+
+  <!-- 5 大现代生活痛点/目标 -->
+  <div class="goal-strip" id="goal-strip">
+    <button type="button" class="goal-chip active" data-goal="wealth" onclick="selectGoal('wealth')">💰 财运拓展</button>
+    <button type="button" class="goal-chip" data-goal="career" onclick="selectGoal('career')">🚀 事业破局</button>
+    <button type="button" class="goal-chip" data-goal="noble" onclick="selectGoal('noble')">🤝 贵人人际</button>
+    <button type="button" class="goal-chip" data-goal="exam" onclick="selectGoal('exam')">🎯 面试表达</button>
+    <button type="button" class="goal-chip" data-goal="calm" onclick="selectGoal('calm')">🌿 静心重启</button>
+  </div>
+
+  <!-- 实时朝向与匹配状态卡片 -->
+  <div class="status-banner" onclick="openCurrentGuide()">
+    <div class="status-left">
+      <span class="hud-deg" id="hud-deg">000.0°</span>
+      <div>
+        <div class="hud-dir" id="hud-dir">正北方</div>
+        <div class="hud-time-sub" id="hud-time-sub">当前时段 · 正在演算</div>
+      </div>
+    </div>
+    <div class="status-right" id="hud-eval">
+      <div>正在分析环境节律...</div>
+    </div>
+  </div>
+
+  <div class="notice-bar calm" id="low-rhythm-bar">🌙 当前处于节律低谷时段，建议先静心整理，点右下角「找近期好时机」预约高能窗口</div>
+  <div class="notice-bar edge" id="edge-bar">🧭 当前靠近方位交界线，左右微调 3°–5° 居中定向体验更佳</div>
+</div>
+
+<!-- 中央 3-Ring 现代空间节律罗盘 -->
+<div class="compass-stage" id="compass-stage">
+  <div class="compass-shell" id="compass-shell">
+    <div class="lubber-line"><div class="lubber-tri"></div></div>
+    <div class="lubber-stem"></div>
+    <svg id="compass-svg" viewBox="0 0 1000 1000">
+      <defs>
+        <radialGradient id="zenHubGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#132238" stop-opacity="0.94"/>
+          <stop offset="100%" stop-color="#070d18" stop-opacity="0.97"/>
+        </radialGradient>
+      </defs>
+      <g id="wheel-group">
+        <g id="ring3-degree"></g>
+        <g id="ring2-energy"></g>
+        <g id="ring1-action"></g>
+      </g>
+      <g id="center-hub"></g>
+    </svg>
+  </div>
+</div>
+
+<!-- 底部控制坞 -->
+<div class="bottom-dock">
+  <div class="sim-bar" id="sim-bar">
+    <span>手动转向</span>
+    <input type="range" id="sim-slider" min="0" max="359.5" step="0.5" value="0">
+    <span id="sim-val">0°</span>
+  </div>
+
+  <div class="time-row">
+    <button type="button" onclick="stepHour(-2)">◀ 上一时段</button>
+    <button type="button" class="now-btn" onclick="resetToNow()">⚡ 回到此刻</button>
+    <button type="button" onclick="stepHour(2)">下一时段 ▶</button>
+    <button type="button" onclick="openTimeModal()">📅 指定日期</button>
+  </div>
+
+  <div class="action-row">
+    <button type="button" class="dock-btn" id="btn-camera" onclick="toggleCamera()">
+      <span class="ico">📷</span><span>实景 AR</span>
+    </button>
+    <button type="button" class="dock-btn" id="btn-sensor" onclick="toggleSensorMode()">
+      <span class="ico">🧭</span><span id="sensor-lbl">手动中</span>
+    </button>
+    <button type="button" class="dock-btn primary" onclick="openBestActionNow()">
+      <span class="ico">✨</span><span>此刻行动卡</span>
+    </button>
+    <button type="button" class="dock-btn gold" onclick="openScheduleModal()">
+      <span class="ico">🗓️</span><span>近期好时机</span>
+    </button>
+  </div>
+</div>
+
+<!-- 通用底部抽屉（行动指南 / 近期节律热力图 / 时间选择） -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="if(event.target===this)closeModal()">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3 id="modal-title">行动指南</h3>
+      <button type="button" class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="sheet-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- 传感器校准与底层设置抽屉 -->
+<div class="diag-backdrop" id="diag-backdrop" onclick="if(event.target===this)closeDiagModal()">
+  <div class="diag-sheet">
+    <div class="diag-head">
+      <h3>空间传感器校准与高级设置</h3>
+      <button type="button" class="sheet-close" onclick="closeDiagModal()">✕</button>
+    </div>
+
+    <div class="form-row" style="margin-bottom:12px;">
+      <label style="min-width:74px;">节律模型</label>
+      <select id="diag-engine-sel" onchange="setEngineMode(this.value)">
+        <option value="ZhiRun">模式 A · 节气长周期（推荐默认）</option>
+        <option value="ChaiBu">模式 B · 节气标准模型</option>
+        <option value="YinPan">模式 C · 月相动态模型</option>
+      </select>
+    </div>
+
+    <div class="diag-grid">
+      <div class="diag-box"><div class="k">活跃通道</div><div class="v" id="diag-channel">simulation</div></div>
+      <div class="diag-box"><div class="k">采样频率</div><div class="v" id="diag-hz">0.0 Hz</div></div>
+      <div class="diag-box"><div class="k">倾角系数 R22</div><div class="v" id="diag-r22">1.000</div></div>
+      <div class="diag-box"><div class="k">原始角 / 补偿角</div><div class="v" id="diag-angles">0.0° / 0.0°</div></div>
+    </div>
+
+    <div class="diag-slider-row">
+      <span>方位偏角人工微调 (-30° ~ +30°)</span>
+      <span class="val" id="diag-dec-val">+0.0°</span>
+    </div>
+    <input type="range" id="diag-dec-slider" min="-30" max="30" step="0.5" value="0">
+
+    <div class="diag-sub">传感器通道切换（严格单源互斥防抖）</div>
+    <div class="diag-ch-grid" id="diag-ch-grid">
+      <button type="button" class="diag-ch-btn" data-ch="absSensor" onclick="forceSensorChannel('absSensor')">1. 3D 四元数</button>
+      <button type="button" class="diag-ch-btn" data-ch="orientationabsolute" onclick="forceSensorChannel('orientationabsolute')">2. 绝对磁北</button>
+      <button type="button" class="diag-ch-btn" data-ch="deviceorientation" onclick="forceSensorChannel('deviceorientation')">3. 常规方向</button>
+      <button type="button" class="diag-ch-btn" data-ch="webkitCompass" onclick="forceSensorChannel('webkitCompass')">4. iOS 罗盘</button>
+      <button type="button" class="diag-ch-btn full active" data-ch="simulation" onclick="forceSensorChannel('simulation')">5. 手动模拟模式</button>
+    </div>
+
+    <button type="button" class="diag-waterfall-btn" onclick="runAutoWaterfall()">↺ 自动检测最佳传感器通道</button>
+    <div class="diag-foot" id="diag-foot"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+ * 一、现代生活目标配置 & 去玄学化内容库（底层精准对应奇门规则）
+ * ============================================================================ */
+const GOALS = {
+  wealth: {
+    id: 'wealth',
+    label: '财运拓展',
+    painPoint: '最近财运受阻、进账缓慢或投资决策犹豫',
+    theme: '财流显化',
+    shortTag: '财流·丰盛',
+    icon: '💰',
+    targetDoors: ['生门'],
+    focusImg: '丰盛的现金流与优质资源如清澈水流般稳健流向自己的生活',
+    affirmation: '财气流转顺畅，价值持续放大',
+    realActions: ['复盘近期收支与报价体系', '联系潜在高价值客户或推进合作报价', '整理理财账户与闲置资金配置', '针对核心盈利项目迈出具体一步']
+  },
+  career: {
+    id: 'career',
+    label: '事业破局',
+    painPoint: '工作陷入瓶颈、项目停滞或想开启新机会',
+    theme: '事业破局',
+    shortTag: '破局·进阶',
+    icon: '🚀',
+    targetDoors: ['开门'],
+    focusImg: '眼前的阻力逐步化开，清晰的新路径与关键机会正在面前展开',
+    affirmation: '思路通透，步步开新局',
+    realActions: ['主动约见关键决策人或上级对齐目标', '启动拖延已久的核心方案或新项目', '优化个人简历/作品集或投递理想岗位', '外出拜访客户或拓展新业务渠道']
+  },
+  noble: {
+    id: 'noble',
+    label: '贵人人际',
+    painPoint: '感到孤军奋战、人际内耗或需要外部支持',
+    theme: '贵人同频',
+    shortTag: '贵人·和合',
+    icon: '🤝',
+    targetDoors: ['休门'],
+    focusImg: '温和互信的人际网络正在张开，恰当的同行者与助力自然向我靠拢',
+    affirmation: '人际和谐，恰逢善缘助力',
+    realActions: ['给久未联系的良师益友发一条真诚问候', '安排轻松的茶叙、约会或合作沟通', '以柔和姿态化解近期误会或僵持关系', '向领域前辈请教一个具体问题']
+  },
+  exam: {
+    id: 'exam',
+    label: '面试表达',
+    painPoint: '面临考试、面试、公开演讲、提案或品牌发声',
+    theme: '才华绽放',
+    shortTag: '表达·亮相',
+    icon: '🎯',
+    targetDoors: ['景门'],
+    focusImg: '表达从容清晰、逻辑闪耀，核心亮点被对方准确看见与认可',
+    affirmation: '思路敏捷，表达自信从容',
+    realActions: ['完成一轮高专注模拟面试或演讲彩排', '发布重要作品、文章、动态或提案材料', '梳理考试/汇报最关键的 3 个核心要点', '发出求职沟通、合作自荐或表白信息']
+  },
+  calm: {
+    id: 'calm',
+    label: '静心重启',
+    painPoint: '精力透支、思绪焦虑或需要为自己按下暂停键',
+    theme: '能量重置',
+    shortTag: '静心·重启',
+    icon: '🌿',
+    targetDoors: ['休门', '生门'],
+    preferGods: ['阴', '地', '符'],
+    focusImg: '城市的喧嚣渐渐退潮，身心回到安静、松弛且充满修复力的状态',
+    affirmation: '内心澄明松弛，步调稳健从容',
+    realActions: ['离开手机屏幕 20 分钟进行正念呼吸', '去公园、河畔或安静角落散步放空', '做一次轻量断舍离，清理桌面与待办清单', '早睡休养或进行温和的身心拉伸']
+  }
+};
+
+// 现代生活视觉色彩 / 随身锚定物 / 正念微动作（底层按天盘干映射，前台零术语）
+const ANCHOR_STYLES = {
+  '甲': { color:'森林绿 / 翠绿', hex:'#10b981', shortColor:'翠绿', obj:'质感腕表或剪裁利落的外套', action:'整理仪容、挺直腰背，以舒展自信的姿态静坐或启程' },
+  '乙': { color:'浅绿 / 青玉色', hex:'#6ee7b7', shortColor:'浅绿', obj:'一盆小绿植、木质小物或一本纸质书', action:'轻盘双腿或双手合十做 3 次深呼吸，柔和舒展肩颈' },
+  '丙': { color:'暖红 / 绛紫色', hex:'#f87171', shortColor:'暖红', obj:'一盏暖色台灯、太阳镜或圆形随行杯', action:'打开暖光或面向自然光线，用圆杯喝口温水激活暖意' },
+  '丁': { color:'珊瑚粉 / 柔和玫红', hex:'#f472b6', shortColor:'暖粉', obj:'香薰蜡烛、一束小花或带吸管的饮品', action:'点亮香薰或柔和暖灯，戴耳机听一首轻快舒缓的纯音乐' },
+  '戊': { color:'明黄 / 琥珀黄', hex:'#eab308', shortColor:'明黄', obj:'陶瓷水杯、厚实靠垫或装有零钱的钱包', action:'随手整理一遍钱包与卡包，感受踏实稳重的掌控感' },
+  '己': { color:'米咖 / 温暖姜黄', hex:'#d97706', shortColor:'暖咖', obj:'陶艺小物、手账本或折叠整齐的丝巾', action:'将桌面或随身衣物整齐叠放归位，轻柔活动双手放松' },
+  '庚': { color:'纯净白 / 象牙白', hex:'#f8fafc', shortColor:'纯白', obj:'白色水杯、金属质感笔或简约几何摆件', action:'在纸上或备忘录写下今天最核心的 1 件事，干脆聚焦' },
+  '辛': { color:'银白 / 高级灰', hex:'#cbd5e1', shortColor:'银灰', obj:'水晶饰品、一枚戒指手链或精致珠串', action:'轻轻摩挲随身小饰品，把杂念收束到一个清晰的小心愿上' },
+  '壬': { color:'深海蓝 / 墨青', hex:'#38bdf8', shortColor:'深蓝', obj:'一杯清澈矿泉水或一张自然风景明信片', action:'在空间里轻快走动两步、喝几口清水，保持思路灵活流动' },
+  '癸': { color:'静谧黑 / 炭灰', hex:'#94a3b8', shortColor:'静灰', obj:'一杯温热清茶或一双极度舒适的鞋履', action:'放慢呼吸节奏，缓慢品尝一口热茶，沉淀浮躁情绪' }
+};
+
+// 8 方位空间定义（仅展示现代方位名称与度数）
+const SECTORS = {
+  1: { num:1, dir:'正北', shortDir:'北', en:'N',  center:0,   elem:'水', star:'天蓬', door:'休门' },
+  8: { num:8, dir:'东北', shortDir:'东北', en:'NE', center:45,  elem:'土', star:'天任', door:'生门' },
+  3: { num:3, dir:'正东', shortDir:'东', en:'E',  center:90,  elem:'木', star:'天冲', door:'伤门' },
+  4: { num:4, dir:'东南', shortDir:'东南', en:'SE', center:135, elem:'木', star:'天辅', door:'杜门' },
+  9: { num:9, dir:'正南', shortDir:'南', en:'S',  center:180, elem:'火', star:'天英', door:'景门' },
+  2: { num:2, dir:'西南', shortDir:'西南', en:'SW', center:225, elem:'土', star:'天芮', door:'死门' },
+  7: { num:7, dir:'正西', shortDir:'西', en:'W',  center:270, elem:'金', star:'天柱', door:'惊门' },
+  6: { num:6, dir:'西北', shortDir:'西北', en:'NW', center:315, elem:'金', star:'天心', door:'开门' },
+  5: { num:5, dir:'中央', shortDir:'中', en:'C',  center:null,elem:'土', star:'天禽', door:'死门' }
+};
+const RING_ORDER = [1, 8, 3, 4, 9, 2, 7, 6];
+const BOUNDARIES = [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5];
+
+/* ============================================================================
+ * 二、后台精确排盘引擎（完全静默运算，对外仅输出去玄学化评分与指引）
+ * ============================================================================ */
+const JQ_TRAD_TO_SIMP = { '驚蟄':'惊蛰', '穀雨':'谷雨', '小滿':'小满', '芒種':'芒种', '處暑':'处暑' };
+function normJQ(n) { return JQ_TRAD_TO_SIMP[n] || n; }
+const JQ_ORDER = [
+  '冬至','小寒','大寒','立春','雨水','惊蛰','春分','清明','谷雨','立夏','小满','芒种',
+  '夏至','小暑','大暑','立秋','处暑','白露','秋分','寒露','霜降','立冬','小雪','大雪'
+];
+const JQ_TABLE = {
+  '冬至':{yang:true, ju:[1,7,4]}, '小寒':{yang:true, ju:[2,8,5]}, '大寒':{yang:true, ju:[3,9,6]},
+  '立春':{yang:true, ju:[8,5,2]}, '雨水':{yang:true, ju:[9,6,3]}, '惊蛰':{yang:true, ju:[1,7,4]},
+  '春分':{yang:true, ju:[3,9,6]}, '清明':{yang:true, ju:[4,1,7]}, '谷雨':{yang:true, ju:[5,2,8]},
+  '立夏':{yang:true, ju:[4,1,7]}, '小满':{yang:true, ju:[5,2,8]}, '芒种':{yang:true, ju:[6,3,9]},
+  '夏至':{yang:false,ju:[9,3,6]}, '小暑':{yang:false,ju:[8,2,5]}, '大暑':{yang:false,ju:[7,1,4]},
+  '立秋':{yang:false,ju:[2,5,8]}, '处暑':{yang:false,ju:[1,4,7]}, '白露':{yang:false,ju:[9,3,6]},
+  '秋分':{yang:false,ju:[7,1,4]}, '寒露':{yang:false,ju:[6,9,3]}, '霜降':{yang:false,ju:[5,8,2]},
+  '立冬':{yang:false,ju:[6,9,3]}, '小雪':{yang:false,ju:[5,8,2]}, '大雪':{yang:false,ju:[4,7,1]}
+};
+const STEM_SEQ = ['戊','己','庚','辛','壬','癸','丁','丙','乙'];
+const XUN_HEAD_STEM = { '甲子':'戊','甲戌':'己','甲申':'庚','甲午':'辛','甲辰':'壬','甲寅':'癸' };
+const GODS_SHORT = ['符','蛇','阴','合','虎','玄','地','天'];
+const OVERCOMES = { '甲':'戊','乙':'己','丙':'庚','丁':'辛','戊':'壬','己':'癸','庚':'甲','辛':'乙','壬':'丙','癸':'丁' };
+const PRODUCES = { '水':'木','木':'火','火':'土','土':'金','金':'水' };
+const ELEM_KE = { '水':'火','火':'金','金':'木','木':'土','土':'水' };
+const ZHI_TO_PALACE = { '子':1,'丑':8,'寅':8,'卯':3,'辰':4,'巳':4,'午':9,'未':2,'申':2,'酉':7,'戌':6,'亥':6 };
+const DOOR_ELEM = { '休门':'水','生门':'土','伤门':'木','杜门':'木','景门':'火','死门':'土','惊门':'金','开门':'金' };
+const JIXING_MAP = { '戊':3, '己':2, '庚':8, '辛':9, '壬':4, '癸':4 };
+const RUME_MAP = { '乙':[6], '丙':[6], '戊':[6], '丁':[8], '己':[8], '庚':[8], '辛':[4], '壬':[4], '癸':[2] };
+
+// 通用非目标方位的去玄学化副主题
+const DOOR_MODERN_TAG = {
+  '生门': '丰盛财流', '开门': '行动破局', '休门': '温和助力', '景门': '表达聚焦',
+  '伤门': '偏冲阻力', '杜门': '静默内守', '死门': '低频休眠', '惊门': '杂波干扰'
+};
+
+const RhythmEngine = {
+  _jqCache: {},
+  _zrCache: {},
+
+  getYearTerms(y) {
+    if (this._jqCache[y]) return this._jqCache[y];
+    const ly = LunarYear.fromYear(y);
+    const jds = ly.getJieQiJulianDays();
+    const list = [];
+    for (let i = 1; i <= 24; i++) {
+      const s = Solar.fromJulianDay(jds[i]);
+      list.push({ name: JQ_ORDER[i - 1], solar: Solar.fromYmd(s.getYear(), s.getMonth(), s.getDay()) });
+    }
+    this._jqCache[y] = list;
+    return list;
+  },
+
+  calcZhiRunJu(solar) {
+    let baseSolar = solar.getHour() >= 23 ? solar.next(1) : solar;
+    const key = baseSolar.toYmd();
+    if (this._zrCache[key]) return this._zrCache[key];
+
+    const targetDay = Solar.fromYmd(baseSolar.getYear(), baseSolar.getMonth(), baseSolar.getDay());
+    const startYear = targetDay.getYear() - 2;
+    const termList = [];
+    for (let y = startYear; y <= targetDay.getYear() + 1; y++) {
+      this.getYearTerms(y).forEach(t => termList.push(t));
+    }
+
+    const dz0 = termList[0].solar;
+    let cycleStart = null;
+    for (let d = -8; d <= 6; d++) {
+      const cand = dz0.next(d);
+      if (LunarUtil.getJiaZiIndex(cand.getLunar().getDayInGanZhi()) % 15 === 0) { cycleStart = cand; break; }
+    }
+    if (!cycleStart) cycleStart = dz0;
+
+    let tIdx = 0, isLeap = false, safety = 0;
+    while (safety++ < 150) {
+      const nextStart = cycleStart.next(15);
+      if (targetDay.subtract(cycleStart) >= 0 && targetDay.subtract(nextStart) < 0) {
+        const yuanIdx = Math.min(2, Math.floor(targetDay.subtract(cycleStart) / 5));
+        const info = JQ_TABLE[termList[tIdx].name];
+        const res = { isYang: info.yang, juNumber: info.ju[yuanIdx] };
+        this._zrCache[key] = res;
+        return res;
+      }
+      const curT = termList[tIdx], nextT = termList[tIdx + 1];
+      if (!nextT) break;
+      if (!isLeap && (curT.name === '芒种' || curT.name === '大雪')) {
+        if (nextT.solar.subtract(nextStart) >= 9) { isLeap = true; cycleStart = nextStart; continue; }
+      }
+      isLeap = false; tIdx++; cycleStart = nextStart;
+    }
+    return this.calcChaiBuJu(solar);
+  },
+
+  calcChaiBuJu(solar) {
+    const lunar = solar.getLunar();
+    const prevJQ = lunar.getPrevJieQi(false);
+    const jqName = normJQ(prevJQ ? prevJQ.getName() : '冬至');
+    const dayIdx = LunarUtil.getJiaZiIndex(lunar.getDayInGanZhiExact());
+    const yuanIdx = Math.floor(dayIdx / 5) % 3;
+    const info = JQ_TABLE[jqName] || { yang: true, ju: [1,7,4] };
+    return { isYang: info.yang, juNumber: info.ju[yuanIdx] };
+  },
+
+  calcYinPanJu(solar) {
+    let calcSolar = solar, hZhiIdx = solar.getLunar().getTimeZhiIndex() + 1;
+    if (solar.getHour() >= 23) { calcSolar = solar.next(1); hZhiIdx = 1; }
+    const l = calcSolar.getLunar();
+    const prevJQ = solar.getLunar().getPrevJieQi(false);
+    const info = JQ_TABLE[normJQ(prevJQ ? prevJQ.getName() : '冬至')] || { yang: true };
+    let ju = ((l.getYearZhiIndexExact() + 1) + Math.abs(l.getMonth()) + l.getDay() + hZhiIdx) % 9;
+    if (ju === 0) ju = 9;
+    return { isYang: info.yang, juNumber: ju };
+  },
+
+  evaluate(dateObj, goalId = 'wealth', engineMode = 'ZhiRun') {
+    const solar = Solar.fromDate(dateObj);
+    const lunar = solar.getLunar();
+    const yGan = lunar.getYearGanExact(), mGan = lunar.getMonthGanExact();
+    const dGan = lunar.getDayGanExact(), dZhi = lunar.getDayZhiExact();
+    const hGan = lunar.getTimeGan(), hZhi = lunar.getTimeZhi();
+    const timeGZ = hGan + hZhi;
+
+    let juInfo;
+    if (engineMode === 'ChaiBu') juInfo = this.calcChaiBuJu(solar);
+    else if (engineMode === 'YinPan') juInfo = this.calcYinPanJu(solar);
+    else juInfo = this.calcZhiRunJu(solar);
+    const { isYang, juNumber } = juInfo;
+
+    const earthStem = {};
+    for (let i = 0; i < 9; i++) {
+      const p = isYang ? ((juNumber - 1 + i) % 9) + 1 : ((juNumber - 1 - i + 90) % 9) + 1;
+      earthStem[p] = STEM_SEQ[i];
+    }
+
+    const xunHeadGZ = LunarUtil.getXun(timeGZ);
+    const xunShouStem = XUN_HEAD_STEM[xunHeadGZ];
+    const xunKongStr = LunarUtil.getXunKong(timeGZ);
+    const xunKongPalaces = [...new Set([xunKongStr[0], xunKongStr[1]].map(z => ZHI_TO_PALACE[z]))];
+
+    let xunPalace = 1;
+    for (let p = 1; p <= 9; p++) if (earthStem[p] === xunShouStem) { xunPalace = p; break; }
+
+    const targetTimeStem = (hGan === '甲') ? xunShouStem : hGan;
+    let zfTargetP = 1;
+    for (let p = 1; p <= 9; p++) if (earthStem[p] === targetTimeStem) { zfTargetP = p; break; }
+    if (zfTargetP === 5) zfTargetP = 2;
+
+    const origRingP = (xunPalace === 5) ? 2 : xunPalace;
+    const origIdx = RING_ORDER.indexOf(origRingP);
+    const zfDstIdx = RING_ORDER.indexOf(zfTargetP);
+
+    const steps = (LunarUtil.getJiaZiIndex(timeGZ) - LunarUtil.getJiaZiIndex(xunHeadGZ) + 60) % 60;
+    let zsTargetP = isYang ? ((xunPalace - 1 + steps) % 9) + 1 : ((xunPalace - 1 - steps + 90) % 9) + 1;
+    if (zsTargetP === 5) zsTargetP = 2;
+    const zsDstIdx = RING_ORDER.indexOf(zsTargetP);
+
+    const raw = {};
+    RING_ORDER.forEach(p => {
+      raw[p] = { ...SECTORS[p], earthStem: earthStem[p], heavenStem: '', heavenJiStem: '', door: '', godS: '' };
+    });
+
+    for (let i = 0; i < 8; i++) {
+      const srcP = RING_ORDER[(origIdx + i) % 8];
+      const dstP = RING_ORDER[(zfDstIdx + i) % 8];
+      raw[dstP].heavenStem = earthStem[srcP];
+      if (srcP === 2) raw[dstP].heavenJiStem = earthStem[5];
+
+      const dstDoorP = RING_ORDER[(zsDstIdx + i) % 8];
+      raw[dstDoorP].door = SECTORS[srcP].door;
+
+      const dstGodP = isYang ? RING_ORDER[(zfDstIdx + i) % 8] : RING_ORDER[(zfDstIdx - i + 8) % 8];
+      raw[dstGodP].godS = GODS_SHORT[i];
+    }
+
+    const dayTargetStem = (dGan === '甲') ? XUN_HEAD_STEM[LunarUtil.getXun(dGan + dZhi)] : dGan;
+    let dayPalace = 2;
+    RING_ORDER.forEach(p => {
+      if (raw[p].heavenStem === dayTargetStem || raw[p].heavenJiStem === dayTargetStem) dayPalace = p;
+    });
+    const hourPalace = zfTargetP;
+    const isLowRhythm = (OVERCOMES[hGan] === dGan);
+    const goal = GOALS[goalId] || GOALS.wealth;
+
+    const sectors = {};
+    RING_ORDER.forEach(p => {
+      const pd = raw[p];
+      const hS = pd.heavenStem, eS = pd.earthStem, door = pd.door, godS = pd.godS;
+
+      // 内部净度检查（迫/刑/墓/空）
+      let defects = 0;
+      if (ELEM_KE[DOOR_ELEM[door]] === pd.elem) defects++;
+      if (JIXING_MAP[hS] === p || (pd.heavenJiStem && JIXING_MAP[pd.heavenJiStem] === p)) defects++;
+      if ((RUME_MAP[hS] && RUME_MAP[hS].includes(p)) || (pd.heavenJiStem && RUME_MAP[pd.heavenJiStem] && RUME_MAP[pd.heavenJiStem].includes(p))) defects++;
+      if (xunKongPalaces.includes(p)) defects++;
+
+      // 内部冲突模式检查
+      let hasConflict = false;
+      if ((hS==='乙'&&eS==='辛') || (hS==='辛'&&eS==='乙') || (hS==='癸'&&eS==='丁') || (hS==='丁'&&eS==='癸')) hasConflict = true;
+      if ((hS==='癸'||hS==='壬') && eS===hGan) hasConflict = true;
+      if (hS==='庚' && ['丙','癸','己','壬'].includes(eS)) hasConflict = true;
+      if (hS==='丙' && (eS==='庚' || [yGan,mGan,dGan,hGan].includes(eS))) hasConflict = true;
+      if (hS === eS) hasConflict = true;
+
+      // 内部正向共振检查
+      let goodSynergy = 0;
+      if ((hS==='戊'&&eS==='丙') || (hS==='丙'&&eS==='戊')) goodSynergy += 2;
+      if (godS==='符' && ['乙','丙','丁'].includes(eS)) goodSynergy++;
+      if (p===zsTargetP && (eS==='丁'||hS==='丁')) goodSynergy++;
+      if (hS==='丙'&&eS==='丁'&&['开门','休门','生门'].includes(door)) goodSynergy += 2;
+      if (hS==='乙'&&eS==='己'&&['开门','生门'].includes(door)) goodSynergy += 2;
+      if (hS==='丁'&&(door==='休门'||godS==='阴')) goodSynergy += 2;
+      if (['丙乙','乙丙','乙丁','丁乙','戊丁','丁戊','丙辛','壬戊'].includes(hS + eS)) goodSynergy++;
+
+      const isGoalDoor = goal.targetDoors.includes(door);
+      const isAnyGoodDoor = ['开门','休门','生门','景门'].includes(door);
+      const isClean = (defects === 0 && !hasConflict);
+
+      const traits = [];
+      let tier = 0;      // 0=避让, 1=顺畅, 2=清晰, 3=共振, 4=巅峰
+      let score = 42;
+      let status = 'low'; // 'peak' | 'good' | 'neutral' | 'low'
+      let tierLabel = '阻力较高';
+
+      if (isGoalDoor && isClean && !isLowRhythm) {
+        tier = 1; score = 76; status = 'good'; tierLabel = '顺畅窗口';
+        traits.push(`契合「${goal.label}」主题`);
+
+        if (['乙','丙','丁'].includes(hS)) {
+          tier = 2; score = 84; tierLabel = '清晰聚焦';
+          traits.push('思绪清澈、思路顺滑');
+        }
+        const preferredGods = goal.preferGods || ['符','阴','地','天'];
+        if (preferredGods.includes(godS) || goodSynergy > 0) {
+          tier = 3; score = Math.min(93, 88 + goodSynergy); tierLabel = '高频共振';
+          if (preferredGods.includes(godS)) traits.push('外部协同氛围佳');
+          if (goodSynergy > 0) traits.push('多重正向节律叠加');
+        }
+        const prodOrSame = (a, b) => a === b || PRODUCES[a] === b;
+        const elemDay = SECTORS[dayPalace].elem;
+        const elemHr = SECTORS[hourPalace].elem;
+        if (prodOrSame(pd.elem, elemDay) || prodOrSame(elemHr, elemDay)) {
+          tier = 4; score = Math.min(99, 95 + Math.min(4, goodSynergy));
+          status = 'peak'; tierLabel = '巅峰聚能';
+          traits.push('环境与当下节奏高度同频');
+        }
+      } else if (isGoalDoor && !hasConflict && defects <= 1 && !isLowRhythm) {
+        tier = 0.5; score = 66; status = 'neutral'; tierLabel = '可用·需稳步';
+        traits.push(`贴合「${goal.label}」，但略带小杂波，适合轻量梳理`);
+      } else if (isAnyGoodDoor && isClean && !isLowRhythm) {
+        tier = 0.4; score = 68; status = 'neutral'; tierLabel = '平稳方位';
+        traits.push(`偏向「${DOOR_MODERN_TAG[door]}」，日常办公与沟通顺畅`);
+      } else {
+        tier = 0; score = isLowRhythm ? 45 : (defects >= 2 ? 32 : 44);
+        status = 'low'; tierLabel = isLowRhythm ? '节律低谷' : '建议避让';
+        traits.push(isLowRhythm ? '此时段整体节奏偏逆，宜先休整再行动' : '该方向环境干扰较多，容易分心消耗');
+      }
+
+      const anchor = ANCHOR_STYLES[hS] || ANCHOR_STYLES['戊'];
+      sectors[p] = {
+        num: p,
+        dir: pd.dir,
+        shortDir: pd.shortDir,
+        en: pd.en,
+        center: pd.center,
+        isGoalMatch: isGoalDoor && tier >= 1 && !isLowRhythm,
+        isGoalMild: isGoalDoor && tier === 0.5 && !isLowRhythm,
+        modernTag: isGoalDoor ? goal.shortTag : DOOR_MODERN_TAG[door],
+        tier, score, status, tierLabel,
+        traits,
+        anchor,
+        sips: p // 温水分 N 小口（自然对应方位数，不暴露术语）
+      };
+    });
+
+    const ranked = RING_ORDER.map(p => sectors[p]).sort((a, b) => {
+      if (b.tier !== a.tier) return b.tier - a.tier;
+      return b.score - a.score;
+    });
+    const bestGoalSector = ranked.find(s => s.isGoalMatch) || ranked.find(s => s.isGoalMild) || null;
+
+    return {
+      dateObj: new Date(dateObj.getTime()),
+      goalId, goal, engineMode,
+      isLowRhythm,
+      sectors,
+      ranked,
+      bestGoalSector
+    };
+  }
+};
+
+/* ============================================================================
+ * 三、应用状态 & 3D 零漂移传感器引擎（严格单源互斥）
+ * ============================================================================ */
+const state = {
+  date: new Date(),
+  goalId: 'wealth',
+  engineMode: 'ZhiRun',
+  tilt3D: false,
+  heading: 0,
+  targetHeading: 0,
+  sensorActive: false,
+  cameraActive: false,
+  stream: null,
+  analysis: null,
+  dragMoved: false
+};
+
+const sensorCtrl = {
+  absSensor: null, fallbackTimer: null, channel: 'simulation',
+  sinEma: null, cosEma: null,
+  declination: parseFloat(localStorage.getItem('cz_declination') || '0') || 0,
+  rawDeg: 0, compDeg: 0, r22: 1.0, hz: 0, frameTimes: [], lastDiagUi: 0
+};
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+function normDeg(d) { return ((d % 360) + 360) % 360; }
+
+function getSectorLookup(deg) {
+  const d = normDeg(deg);
+  const idx = Math.floor(((d + 22.5) % 360) / 45);
+  const sectorNum = RING_ORDER[idx];
+  const nearEdge = BOUNDARIES.some(b => Math.abs(((d - b + 540) % 360) - 180) <= 2.0);
+  return { deg: d, sectorNum, nearEdge };
+}
+
+function resetSensorFilter() {
+  sensorCtrl.sinEma = null; sensorCtrl.cosEma = null;
+  sensorCtrl.frameTimes = []; sensorCtrl.hz = 0;
+}
+
+function updateDiagUI(force = false) {
+  const modal = document.getElementById('diag-backdrop');
+  if (!modal || !modal.classList.contains('open')) return;
+  const now = performance.now();
+  if (!force && now - sensorCtrl.lastDiagUi < 120) return;
+  sensorCtrl.lastDiagUi = now;
+
+  const cutoff = now - 1000;
+  while (sensorCtrl.frameTimes.length && sensorCtrl.frameTimes[0] < cutoff) sensorCtrl.frameTimes.shift();
+  sensorCtrl.hz = sensorCtrl.channel === 'simulation' ? 0 : sensorCtrl.frameTimes.length;
+
+  document.getElementById('diag-channel').textContent = sensorCtrl.channel;
+  document.getElementById('diag-hz').textContent = `${sensorCtrl.hz.toFixed(1)} Hz`;
+  document.getElementById('diag-r22').textContent = sensorCtrl.r22.toFixed(3);
+  document.getElementById('diag-angles').textContent = `${sensorCtrl.rawDeg.toFixed(1)}° / ${sensorCtrl.compDeg.toFixed(1)}°`;
+  document.querySelectorAll('#diag-ch-grid .diag-ch-btn').forEach(b => b.classList.toggle('active', b.dataset.ch === sensorCtrl.channel));
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  document.getElementById('diag-foot').textContent =
+    `平台: ${isIOS ? 'iOS Safari' : 'Android / 桌面'} | 上下文: ${isSecure ? 'HTTPS 安全' : '非 HTTPS（仅手动模拟）'} | 3D 姿态防抖已开启。`;
+}
+
+function openDiagModal() {
+  const modal = document.getElementById('diag-backdrop');
+  document.getElementById('diag-engine-sel').value = state.engineMode;
+  const slider = document.getElementById('diag-dec-slider');
+  const valEl = document.getElementById('diag-dec-val');
+  slider.value = sensorCtrl.declination;
+  valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
+  slider.oninput = () => {
+    sensorCtrl.declination = parseFloat(slider.value);
+    localStorage.setItem('cz_declination', String(sensorCtrl.declination));
+    valEl.textContent = `${sensorCtrl.declination >= 0 ? '+' : ''}${sensorCtrl.declination.toFixed(1)}°`;
+    if (sensorCtrl.sinEma !== null) {
+      const base = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+      sensorCtrl.compDeg = normDeg(base + sensorCtrl.declination);
+      state.targetHeading = sensorCtrl.compDeg;
+    } else {
+      const simBase = parseFloat(document.getElementById('sim-slider').value) || 0;
+      sensorCtrl.rawDeg = simBase;
+      sensorCtrl.compDeg = normDeg(simBase + sensorCtrl.declination);
+      state.targetHeading = sensorCtrl.compDeg;
+    }
+    updateDiagUI(true);
+  };
+  modal.classList.add('open');
+  updateDiagUI(true);
+}
+function closeDiagModal() { document.getElementById('diag-backdrop').classList.remove('open'); }
+
+function setEngineMode(mode) {
+  state.engineMode = mode;
+  schedState.lastScan = null;
+  recomputeAndRender();
+  showToast('已切换节律演算模型');
+}
+
+function feedHeading(rawDeg, r22Val) {
+  if (!state.sensorActive || isNaN(rawDeg)) return;
+  const d = normDeg(rawDeg);
+  sensorCtrl.frameTimes.push(performance.now());
+  sensorCtrl.rawDeg = d;
+  if (typeof r22Val === 'number' && !isNaN(r22Val)) sensorCtrl.r22 = r22Val;
+
+  const rad = d * Math.PI / 180;
+  const s = Math.sin(rad), c = Math.cos(rad);
+  if (sensorCtrl.sinEma === null) { sensorCtrl.sinEma = s; sensorCtrl.cosEma = c; }
+  else {
+    const prev = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+    const jump = Math.abs(((d - prev + 540) % 360) - 180);
+    let alpha = 0.14;
+    if (jump < 1.2) alpha = 0.04;
+    else if (jump > 45) alpha = 0.07;
+    else if (jump > 10) alpha = 0.22;
+    sensorCtrl.sinEma = sensorCtrl.sinEma * (1 - alpha) + s * alpha;
+    sensorCtrl.cosEma = sensorCtrl.cosEma * (1 - alpha) + c * alpha;
+    const len = Math.hypot(sensorCtrl.sinEma, sensorCtrl.cosEma) || 1;
+    sensorCtrl.sinEma /= len; sensorCtrl.cosEma /= len;
+  }
+  const filtered = normDeg(Math.atan2(sensorCtrl.sinEma, sensorCtrl.cosEma) * 180 / Math.PI);
+  const comp = normDeg(filtered + sensorCtrl.declination);
+  sensorCtrl.compDeg = comp;
+  if (Math.abs(((comp - state.targetHeading + 540) % 360) - 180) >= 0.3) state.targetHeading = comp;
+  updateDiagUI();
+}
+
+function blendENU(topE, topN, camE, camN, r22) {
+  const t = Math.max(0, Math.min(1, r22));
+  const tLen = Math.hypot(topE, topN), cLen = Math.hypot(camE, camN);
+  let E = 0, N = 0;
+  if (tLen > 1e-4 && cLen > 1e-4) {
+    E = t * (topE / tLen) + (1 - t) * (camE / cLen);
+    N = t * (topN / tLen) + (1 - t) * (camN / cLen);
+  } else if (tLen > 1e-4) { E = topE; N = topN; } else { E = camE; N = camN; }
+  return { deg: normDeg(Math.atan2(E, N) * 180 / Math.PI), r22 };
+}
+function headingFromQuat(q) {
+  const [x, y, z, w] = q;
+  return blendENU(2*(x*y-z*w), 1-2*(x*x+z*z), -2*(x*z+y*w), -2*(y*z-x*w), 1-2*(x*x+y*y));
+}
+function headingFromEuler(alpha, beta, gamma) {
+  const r = Math.PI / 180, a = alpha*r, b = beta*r, g = gamma*r;
+  const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+  return blendENU(-sA*cB, cA*cB, -(cA*sG+sA*sB*cG), -(sA*sG-cA*sB*cG), cB*cG);
+}
+
+function onAbsEvent(e) {
+  if (!state.sensorActive || sensorCtrl.channel !== 'orientationabsolute' || e.alpha === null) return;
+  const res = headingFromEuler(e.alpha, e.beta, e.gamma);
+  feedHeading(res.deg, res.r22);
+}
+function onDevEvent(e) {
+  if (!state.sensorActive) return;
+  if (sensorCtrl.channel === 'webkitCompass' && typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+    const r22 = (e.beta !== null && e.gamma !== null) ? Math.cos(e.beta*Math.PI/180)*Math.cos(e.gamma*Math.PI/180) : 1;
+    feedHeading(e.webkitCompassHeading, r22);
+  } else if (sensorCtrl.channel === 'deviceorientation' && e.alpha !== null) {
+    const res = headingFromEuler(e.alpha, e.beta, e.gamma);
+    feedHeading(res.deg, res.r22);
+  }
+}
+
+function stopAllSensors() {
+  if (sensorCtrl.fallbackTimer) { clearTimeout(sensorCtrl.fallbackTimer); sensorCtrl.fallbackTimer = null; }
+  if (sensorCtrl.absSensor) { try { sensorCtrl.absSensor.stop(); } catch (_) {} sensorCtrl.absSensor = null; }
+  window.removeEventListener('deviceorientationabsolute', onAbsEvent, true);
+  window.removeEventListener('deviceorientation', onDevEvent, true);
+  resetSensorFilter();
+}
+
+function syncSensorUI() {
+  const isSim = sensorCtrl.channel === 'simulation';
+  state.sensorActive = !isSim;
+  document.getElementById('btn-sensor').classList.toggle('active', !isSim);
+  document.getElementById('sim-bar').classList.toggle('show', isSim);
+  const map = { absSensor:'自动定向', orientationabsolute:'自动定向', deviceorientation:'相对定向', webkitCompass:'自动定向', simulation:'手动中' };
+  document.getElementById('sensor-lbl').textContent = map[sensorCtrl.channel] || '手动中';
+  updateDiagUI(true);
+}
+
+async function forceSensorChannel(ch) {
+  stopAllSensors();
+  if (ch === 'simulation') { sensorCtrl.channel = 'simulation'; syncSensorUI(); return; }
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== 'granted') { sensorCtrl.channel = 'simulation'; syncSensorUI(); showToast('未获得方向权限，保持手动模式'); return; }
+    }
+    if (ch === 'absSensor') {
+      if (!('AbsoluteOrientationSensor' in window)) { sensorCtrl.channel = 'simulation'; syncSensorUI(); return; }
+      sensorCtrl.channel = 'absSensor'; syncSensorUI();
+      const s = new AbsoluteOrientationSensor({ frequency: 30, referenceFrame: 'device' });
+      sensorCtrl.absSensor = s;
+      s.addEventListener('reading', () => {
+        if (sensorCtrl.channel !== 'absSensor' || !s.quaternion) return;
+        const res = headingFromQuat(s.quaternion);
+        feedHeading(res.deg, res.r22);
+      });
+      s.start(); return;
+    }
+    if (ch === 'orientationabsolute') {
+      sensorCtrl.channel = 'orientationabsolute'; syncSensorUI();
+      window.addEventListener('deviceorientationabsolute', onAbsEvent, true); return;
+    }
+    sensorCtrl.channel = ch; syncSensorUI();
+    window.addEventListener('deviceorientation', onDevEvent, true);
+  } catch (_) { sensorCtrl.channel = 'simulation'; syncSensorUI(); }
+}
+
+async function runAutoWaterfall() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) { await forceSensorChannel('webkitCompass'); return; }
+  const order = [];
+  if ('AbsoluteOrientationSensor' in window) order.push('absSensor');
+  order.push('orientationabsolute', 'deviceorientation', 'simulation');
+  let i = 0;
+  async function next() {
+    const ch = order[i++];
+    await forceSensorChannel(ch);
+    if (ch === 'simulation') return;
+    sensorCtrl.fallbackTimer = setTimeout(() => {
+      if (sensorCtrl.channel === ch && sensorCtrl.frameTimes.length === 0) next();
+    }, 850);
+  }
+  next();
+}
+
+async function toggleSensorMode() {
+  if (sensorCtrl.channel !== 'simulation') await forceSensorChannel('simulation');
+  else await runAutoWaterfall();
+}
+
+async function toggleCamera() {
+  const video = document.getElementById('camera-video');
+  const bg = document.getElementById('bg-ambient');
+  const btn = document.getElementById('btn-camera');
+  if (state.cameraActive) {
+    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+    state.stream = null; state.cameraActive = false;
+    video.classList.remove('active'); bg.classList.remove('ar-on'); btn.classList.remove('active');
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('当前环境不支持调用摄像头，请使用 HTTPS 打开'); return;
+  }
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    video.srcObject = state.stream; await video.play();
+    state.cameraActive = true; video.classList.add('active'); bg.classList.add('ar-on'); btn.classList.add('active');
+    resetSensorFilter();
+  } catch (_) { showToast('摄像头授权未通过'); }
+}
+
+/* ============================================================================
+ * 四、极简现代 3-Ring AR 空间罗盘渲染
+ * ============================================================================ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}, text = null) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  if (text !== null) el.textContent = text;
+  return el;
+}
+function polar(cx, cy, r, deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function sectorPath(cx, cy, rIn, rOut, startDeg, endDeg) {
+  const p1 = polar(cx, cy, rOut, startDeg), p2 = polar(cx, cy, rOut, endDeg);
+  const p3 = polar(cx, cy, rIn, endDeg), p4 = polar(cx, cy, rIn, startDeg);
+  const large = (endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${rOut} ${rOut} 0 ${large} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)} A ${rIn} ${rIn} 0 ${large} 0 ${p4.x.toFixed(2)} ${p4.y.toFixed(2)} Z`;
+}
+function radialText(cx, cy, r, deg, text, attrs = {}) {
+  const pos = polar(cx, cy, r, deg);
+  return svgEl('text', {
+    x: pos.x.toFixed(2), y: pos.y.toFixed(2),
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+    transform: `rotate(${deg} ${pos.x.toFixed(2)} ${pos.y.toFixed(2)})`,
+    ...attrs
+  }, text);
+}
+
+function handleSectorTap(sNum) {
+  if (state.dragMoved) return;
+  openActionGuideModal(sNum);
+}
+
+function renderCompassSVG() {
+  const an = state.analysis;
+  if (!an) return;
+  const cx = 500, cy = 500;
+
+  // Ring 3: 外圈 360° 精密刻度环 (r: 422..486)
+  const g3 = document.getElementById('ring3-degree');
+  g3.innerHTML = '';
+  g3.appendChild(svgEl('circle', { cx, cy, r: 486, fill: 'rgba(10,16,28,0.82)', stroke: 'rgba(148,163,184,0.28)', 'stroke-width': 1.5 }));
+  g3.appendChild(svgEl('circle', { cx, cy, r: 422, fill: 'none', stroke: 'rgba(148,163,184,0.22)', 'stroke-width': 1.2 }));
+
+  for (let deg = 0; deg < 360; deg += 5) {
+    const isMajor = deg % 45 === 0;
+    const isMid = deg % 15 === 0;
+    const r1 = isMajor ? 464 : (isMid ? 472 : 478);
+    const p1 = polar(cx, cy, r1, deg), p2 = polar(cx, cy, 486, deg);
+    g3.appendChild(svgEl('line', {
+      x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+      stroke: deg === 0 ? '#34d399' : (isMajor ? '#cbd5e1' : 'rgba(148,163,184,0.35)'),
+      'stroke-width': isMajor ? 2.2 : 1
+    }));
+  }
+  RING_ORDER.forEach(pNum => {
+    const s = an.sectors[pNum];
+    g3.appendChild(radialText(cx, cy, 446, s.center, `${s.shortDir} ${s.en}`, {
+      fill: pNum === 1 ? '#34d399' : (s.isGoalMatch ? '#a7f3d0' : '#cbd5e1'),
+      'font-size': 18.5, 'font-weight': '800'
+    }));
+  });
+
+  // Ring 2: 中圈 能量评分与状态环 (r: 312..422)
+  const g2 = document.getElementById('ring2-energy');
+  g2.innerHTML = '';
+  RING_ORDER.forEach(pNum => {
+    const s = an.sectors[pNum];
+    const start = s.center - 22.5, end = s.center + 22.5;
+    let fill = 'rgba(15, 23, 42, 0.78)';
+    let stroke = 'rgba(148,163,184,0.24)';
+    let sw = 1.4;
+    if (s.isGoalMatch) {
+      fill = s.tier >= 4 ? 'rgba(16, 185, 129, 0.42)' : (s.tier === 3 ? 'rgba(56, 189, 248, 0.30)' : 'rgba(52, 211, 153, 0.24)');
+      stroke = s.tier >= 4 ? '#34d399' : '#38bdf8';
+      sw = 2.6;
+    } else if (s.isGoalMild) {
+      fill = 'rgba(251, 191, 36, 0.22)';
+      stroke = '#fbbf24'; sw = 1.8;
+    } else if (s.status === 'neutral') {
+      fill = 'rgba(30, 41, 59, 0.72)';
+    }
+
+    const grp = svgEl('g', { class: 'sector-hit' });
+    grp.onclick = () => handleSectorTap(pNum);
+    grp.appendChild(svgEl('path', { d: sectorPath(cx, cy, 312, 422, start, end), fill, stroke, 'stroke-width': sw }));
+
+    grp.appendChild(radialText(cx, cy, 384, s.center, s.isGoalMatch ? `★ ${s.tierLabel}` : s.tierLabel, {
+      fill: s.isGoalMatch ? '#ffffff' : (s.isGoalMild ? '#fde68a' : '#94a3b8'),
+      'font-size': 19, 'font-weight': '800'
+    }));
+    grp.appendChild(radialText(cx, cy, 344, s.center, `${s.score}分 · ${s.modernTag}`, {
+      fill: s.isGoalMatch ? '#d1fae5' : '#94a3b8',
+      'font-size': 15.5, 'font-weight': '700'
+    }));
+    g2.appendChild(grp);
+  });
+
+  // Ring 1: 内圈 目标匹配与视觉色系指引环 (r: 138..312)
+  const g1 = document.getElementById('ring1-action');
+  g1.innerHTML = '';
+  RING_ORDER.forEach(pNum => {
+    const s = an.sectors[pNum];
+    const start = s.center - 22.5, end = s.center + 22.5;
+    const grp = svgEl('g', { class: 'sector-hit' });
+    grp.onclick = () => handleSectorTap(pNum);
+
+    grp.appendChild(svgEl('path', {
+      d: sectorPath(cx, cy, 138, 312, start, end),
+      fill: s.isGoalMatch ? 'rgba(13, 36, 40, 0.90)' : 'rgba(10, 16, 28, 0.88)',
+      stroke: s.isGoalMatch ? '#34d399' : 'rgba(148,163,184,0.22)',
+      'stroke-width': s.isGoalMatch ? 2.2 : 1.2
+    }));
+
+    // 推荐视觉色圆点
+    const dotPos = polar(cx, cy, 276, s.center);
+    grp.appendChild(svgEl('circle', {
+      cx: dotPos.x.toFixed(2), cy: dotPos.y.toFixed(2), r: s.isGoalMatch ? 12 : 8,
+      fill: s.anchor.hex, stroke: '#ffffff', 'stroke-width': s.isGoalMatch ? 2 : 1,
+      opacity: s.isGoalMatch ? 1 : 0.45
+    }));
+
+    grp.appendChild(radialText(cx, cy, 232, s.center, s.isGoalMatch ? `推荐 ${s.anchor.shortColor}` : s.dir, {
+      fill: s.isGoalMatch ? '#a7f3d0' : '#94a3b8',
+      'font-size': s.isGoalMatch ? 19 : 16, 'font-weight': '800'
+    }));
+
+    grp.appendChild(radialText(cx, cy, 186, s.center, s.isGoalMatch ? '点看行动卡' : (s.isGoalMild ? '轻量梳理' : '常规区'), {
+      fill: s.isGoalMatch ? '#fde68a' : '#64748b',
+      'font-size': 14, 'font-weight': '700'
+    }));
+
+    g1.appendChild(grp);
+  });
+
+  // 中心正立枢纽
+  const hub = document.getElementById('center-hub');
+  hub.innerHTML = '';
+  const best = an.bestGoalSector;
+  const hubStroke = an.isLowRhythm ? '#fbbf24' : (best && best.isGoalMatch ? '#34d399' : '#64748b');
+  hub.appendChild(svgEl('circle', { cx, cy, r: 138, fill: 'url(#zenHubGrad)', stroke: hubStroke, 'stroke-width': 2.8 }));
+  hub.appendChild(svgEl('text', { x:cx, y:cy-48, 'text-anchor':'middle', fill:'#94a3b8', 'font-size':17, 'font-weight':700 },
+    `${an.goal.icon} 当前目标`));
+  hub.appendChild(svgEl('text', { x:cx, y:cy-16, 'text-anchor':'middle', fill:'#ffffff', 'font-size':24, 'font-weight':800 },
+    an.goal.label));
+
+  if (an.isLowRhythm) {
+    hub.appendChild(svgEl('text', { x:cx, y:cy+22, 'text-anchor':'middle', fill:'#fde68a', 'font-size':19, 'font-weight':800 }, '此刻节律低谷'));
+    hub.appendChild(svgEl('text', { x:cx, y:cy+52, 'text-anchor':'middle', fill:'#94a3b8', 'font-size':15 }, '宜静休 · 换时段更佳'));
+  } else if (best && best.isGoalMatch) {
+    hub.appendChild(svgEl('text', { x:cx, y:cy+24, 'text-anchor':'middle', fill:'#34d399', 'font-size':22, 'font-weight':900 },
+      `优选 ${best.dir}方`));
+    hub.appendChild(svgEl('text', { x:cx, y:cy+54, 'text-anchor':'middle', fill:'#a7f3d0', 'font-size':16, 'font-weight':700 },
+      `${best.tierLabel} · ${best.score}分`));
+  } else if (best && best.isGoalMild) {
+    hub.appendChild(svgEl('text', { x:cx, y:cy+24, 'text-anchor':'middle', fill:'#fde68a', 'font-size':20, 'font-weight':800 },
+      `可用 ${best.dir}方`));
+    hub.appendChild(svgEl('text', { x:cx, y:cy+54, 'text-anchor':'middle', fill:'#cbd5e1', 'font-size':15 },
+      '轻量整理 · 点近期找高能'));
+  } else {
+    hub.appendChild(svgEl('text', { x:cx, y:cy+24, 'text-anchor':'middle', fill:'#cbd5e1', 'font-size':18, 'font-weight':800 }, '此时段平缓'));
+    hub.appendChild(svgEl('text', { x:cx, y:cy+54, 'text-anchor':'middle', fill:'#94a3b8', 'font-size':14.5 }, '点「近期好时机」预约'));
+  }
+}
+
+/* ============================================================================
+ * 五、HUD 刷新与动画循环
+ * ============================================================================ */
+function formatSlotLabel(dateObj) {
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const h = dateObj.getHours();
+  const startH = h === 0 ? 23 : (h % 2 === 0 ? h - 1 : h);
+  const endH = (startH + 2) % 24;
+  return `${dateObj.getMonth()+1}月${dateObj.getDate()}日 ${pad(startH)}:00-${pad(endH)}:00`;
+}
+
+function updateHUD() {
+  const an = state.analysis;
+  const lk = getSectorLookup(state.heading);
+  document.getElementById('hud-deg').textContent = `${lk.deg.toFixed(1).padStart(5, '0')}°`;
+  if (!an) return;
+
+  const s = an.sectors[lk.sectorNum];
+  document.getElementById('hud-dir').textContent = `${s.dir}方`;
+  document.getElementById('hud-time-sub').textContent = formatSlotLabel(an.dateObj);
+
+  let pillBg = '#475569', pillTxt = '#f8fafc';
+  if (s.isGoalMatch) { pillBg = s.tier >= 4 ? '#34d399' : '#38bdf8'; pillTxt = '#061018'; }
+  else if (s.isGoalMild) { pillBg = '#fbbf24'; pillTxt = '#061018'; }
+
+  document.getElementById('hud-eval').innerHTML = `
+    <div><span class="score-pill" style="background:${pillBg};color:${pillTxt}">${s.tierLabel} · ${s.score}分</span></div>
+    <div style="color:#cbd5e1;margin-top:2px;">${s.modernTag} · 宜配${s.anchor.shortColor}</div>
+  `;
+
+  document.getElementById('low-rhythm-bar').classList.toggle('show', an.isLowRhythm);
+  document.getElementById('edge-bar').classList.toggle('show', !an.isLowRhythm && lk.nearEdge);
+}
+
+function animateLoop() {
+  const diff = ((state.targetHeading - state.heading + 540) % 360) - 180;
+  if (Math.abs(diff) > 0.05) {
+    state.heading = normDeg(state.heading + diff * 0.22);
+    document.getElementById('wheel-group').setAttribute('transform', `rotate(${-state.heading.toFixed(2)} 500 500)`);
+    updateHUD();
+  }
+  updateDiagUI();
+  requestAnimationFrame(animateLoop);
+}
+
+function recomputeAndRender() {
+  if (typeof Solar === 'undefined') return;
+  state.analysis = RhythmEngine.evaluate(state.date, state.goalId, state.engineMode);
+  renderCompassSVG();
+  updateHUD();
+}
+
+function selectGoal(id) {
+  state.goalId = id;
+  document.querySelectorAll('#goal-strip .goal-chip').forEach(b => b.classList.toggle('active', b.dataset.goal === id));
+  schedState.lastScan = null;
+  recomputeAndRender();
+  const best = state.analysis?.bestGoalSector;
+  if (best && best.isGoalMatch) {
+    showToast(`${GOALS[id].icon} 当前优选：${best.dir}方（${best.tierLabel} ${best.score}分）`);
+  } else {
+    showToast(`已切换「${GOALS[id].label}」，可点右下角查看近期高能窗口`);
+  }
+}
+
+/* ============================================================================
+ * 六、行动指南卡片（含 3 步 SOP + 专注倒计时）& 近期好时机热力图
+ * ============================================================================ */
+let focusTimerInt = null;
+let focusRemainSec = 0;
+
+function clearFocusTimer() {
+  if (focusTimerInt) { clearInterval(focusTimerInt); focusTimerInt = null; }
+}
+function startFocusTimer(minutes) {
+  clearFocusTimer();
+  focusRemainSec = minutes * 60;
+  updateTimerDisplay();
+  focusTimerInt = setInterval(() => {
+    focusRemainSec--;
+    if (focusRemainSec <= 0) {
+      clearFocusTimer();
+      focusRemainSec = 0;
+      updateTimerDisplay();
+      showToast('✨ 专注仪式已完成，祝你顺流前行！');
+      return;
+    }
+    updateTimerDisplay();
+  }, 1000);
+}
+function updateTimerDisplay() {
+  const el = document.getElementById('focus-timer-text');
+  if (!el) return;
+  const m = Math.floor(focusRemainSec / 60), s = focusRemainSec % 60;
+  el.textContent = `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+function openModal(title, html) {
+  clearFocusTimer();
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+function closeModal() {
+  clearFocusTimer();
+  document.getElementById('modal-backdrop').classList.remove('open');
+}
+
+function openCurrentGuide() {
+  const lk = getSectorLookup(state.heading);
+  openActionGuideModal(lk.sectorNum);
+}
+
+function openBestActionNow() {
+  const an = state.analysis;
+  if (!an) return;
+  if (an.bestGoalSector) {
+    openActionGuideModal(an.bestGoalSector.num);
+  } else {
+    openScheduleModal();
+  }
+}
+
+function openActionGuideModal(sectorNum) {
+  const an = state.analysis;
+  if (!an) return;
+  const s = an.sectors[sectorNum];
+  const g = an.goal;
+  const a = s.anchor;
+  const timeStr = formatSlotLabel(an.dateObj);
+  const cardCls = s.isGoalMatch ? (s.tier >= 4 ? 'peak' : 'good') : (s.isGoalMild ? 'warn' : '');
+
+  const html = `
+    <div class="card ${cardCls}">
+      <div class="card-title">
+        <span>${g.icon} ${s.dir}方（${s.center}°）· ${g.theme}</span>
+        <span class="score-pill" style="background:${s.isGoalMatch?'#34d399':(s.isGoalMild?'#fbbf24':'#64748b')};color:${s.isGoalMatch||s.isGoalMild?'#061018':'#fff'}">${s.tierLabel} · ${s.score}分</span>
+      </div>
+      <div style="font-size:12px;color:#cbd5e1;">
+        时段：${timeStr} ｜ 适配状态：${s.traits.join('；')}
+      </div>
+      ${(!s.isGoalMatch && !s.isGoalMild) ? `
+        <div style="margin-top:6px;font-size:12px;color:#fde68a;">
+          💡 该方位当前与「${g.label}」共振偏弱。建议点击下方按钮查看未来几天的专属高能时段，或转向罗盘高亮绿色的方向。
+        </div>
+      ` : ''}
+    </div>
+
+    <!-- 内置正念执行倒计时 -->
+    <div class="timer-box">
+      <div>
+        <div style="font-size:11px;color:#94a3b8;">专注行动 / 静坐计时</div>
+        <div class="timer-display" id="focus-timer-text">15:00</div>
+      </div>
+      <div class="timer-btns">
+        <button type="button" onclick="startFocusTimer(3)">3分钟速启</button>
+        <button type="button" onclick="startFocusTimer(15)">15分钟沉浸</button>
+        <button type="button" class="stop" onclick="clearFocusTimer();focusRemainSec=0;updateTimerDisplay();">重置</button>
+      </div>
+    </div>
+
+    <!-- 1-2-3 去玄学化行动 SOP -->
+    <div class="card">
+      <div class="card-title"><span>📋 「${g.label}」三步行动指南</span></div>
+
+      <div class="step-box">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>空间与环境准备（3分钟）</strong><br>
+          • <strong>方位定向</strong>：向「<strong>${s.dir}方</strong>」户外散步 15 分钟；若在室内，则在房间${s.dir}侧找舒服位置，<strong>背靠${s.dir}方</strong>安坐。<br>
+          • <strong>视觉色彩</strong>：穿戴或手边放置 <i class="color-dot" style="background:${a.hex}"></i><strong>${a.color}</strong> 元素。<br>
+          • <strong>锚定小物</strong>：准备 1 杯温水，以及 <strong>${a.obj}</strong>。
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>专注执行与状态切换（15分钟）</strong><br>
+          • <strong>启动微动作</strong>：${a.action}。<br>
+          • <strong>心理观想</strong>：闭眼做 3 次深呼吸，想象「${g.focusImg}」。<br>
+          • <strong>落地现实动作（任选 1 项立刻推进）</strong>：
+          <div class="tag-row">
+            ${g.realActions.map(act => `<span class="tag hi">${act}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>收尾锚定（1分钟）</strong><br>
+          • 缓缓睁眼，将手边的温水分 <strong>${s.sips} 小口</strong> 慢慢喝完。<br>
+          • 对自己轻声说一句正向暗示：<strong style="color:#a7f3d0;">「✨ ${g.affirmation} ✨」</strong>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button type="button" class="btn-full" onclick="pointToSector(${s.center});closeModal();">🧭 在罗盘指向${s.dir}方</button>
+      <button type="button" class="btn-ghost" style="margin-top:0" onclick="openScheduleModal()">🗓️ 找更多高能时段</button>
+    </div>
+  `;
+  openModal(`${g.icon} ${g.label} · ${s.dir}方行动指南`, html);
+}
+
+function pointToSector(deg) {
+  if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+  sensorCtrl.rawDeg = deg;
+  sensorCtrl.compDeg = normDeg(deg + sensorCtrl.declination);
+  state.targetHeading = sensorCtrl.compDeg;
+  document.getElementById('sim-slider').value = deg;
+  document.getElementById('sim-val').textContent = deg + '°';
+}
+
+/* ---------- 近期好时机（多日节律热力图） ---------- */
+const schedState = {
+  days: 30,
+  minTier: 1,       // 1=全部顺畅窗口(>=76分) | 3=仅高能精选(>=88分)
+  daytimeOnly: true,
+  selectedDay: null,
+  sortBy: 'time',   // 'time' | 'score'
+  pageSize: 18,
+  lastScan: null
+};
+
+function openScheduleModal() {
+  const g = GOALS[state.goalId];
+  const html = `
+    <div class="card">
+      <div style="font-size:12px;color:#cbd5e1;margin-bottom:8px;">
+        针对你的困扰「<strong style="color:#a7f3d0">${g.painPoint}</strong>」，自动规划未来最适合行动的日期、时段与空间方向：
+      </div>
+      <div class="form-row">
+        <label>当前目标</label>
+        <select id="sch-goal" onchange="selectGoal(this.value);runScheduleScan();">
+          ${Object.values(GOALS).map(item => `<option value="${item.id}" ${state.goalId===item.id?'selected':''}>${item.icon} ${item.label}（${item.theme}）</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row-2col">
+        <select id="sch-days" onchange="schedState.days=parseInt(this.value,10);runScheduleScan();">
+          <option value="14" ${schedState.days===14?'selected':''}>规划未来 14 天</option>
+          <option value="30" ${schedState.days===30?'selected':''}>规划未来 30 天（推荐）</option>
+          <option value="60" ${schedState.days===60?'selected':''}>规划未来 60 天</option>
+        </select>
+        <select id="sch-tier" onchange="schedState.minTier=parseInt(this.value,10);runScheduleScan();">
+          <option value="3" ${schedState.minTier===3?'selected':''}>仅看高能精选 (≥88分)</option>
+          <option value="1" ${schedState.minTier===1?'selected':''}>全部顺畅窗口 (≥76分)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>活动时段</label>
+        <select id="sch-hours" onchange="schedState.daytimeOnly=(this.value==='day');runScheduleScan();">
+          <option value="day" ${schedState.daytimeOnly?'selected':''}>仅看白天与晚间（07:00 - 23:00）</option>
+          <option value="all" ${!schedState.daytimeOnly?'selected':''}>全天 24 小时</option>
+        </select>
+      </div>
+    </div>
+    <div id="sch-results"></div>
+  `;
+  openModal(`🗓️ 「${g.label}」近期好时机热力图`, html);
+
+  if (schedState.lastScan && schedState.lastScan.goalId === state.goalId && schedState.lastScan.engineMode === state.engineMode) {
+    renderScheduleResults();
+  } else {
+    runScheduleScan();
+  }
+}
+
+function fmtDayKey(d) {
+  const pad = n => (n < 10 ? '0' : '') + n;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function runScheduleScan() {
+  schedState.selectedDay = null;
+  schedState.pageSize = 18;
+
+  const scanHours = schedState.daytimeOnly ? [8, 10, 12, 14, 16, 18, 20, 22] : [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+  const anchor = new Date(state.date.getTime());
+  const minTs = anchor.getTime() - 3600 * 1000;
+  const baseY = anchor.getFullYear(), baseM = anchor.getMonth(), baseD = anchor.getDate();
+
+  const daysList = [];
+  const allSlots = [];
+
+  for (let dOff = 0; dOff < schedState.days; dOff++) {
+    const dayDate = new Date(baseY, baseM, baseD + dOff, 12, 0, 0, 0);
+    const dayKey = fmtDayKey(dayDate);
+    const daySlots = [];
+    let peakCnt = 0, heatScore = 0;
+
+    for (let hi = 0; hi < scanHours.length; hi++) {
+      const h = scanHours[hi];
+      const t = new Date(baseY, baseM, baseD + dOff, h, 0, 0, 0);
+      if (t.getTime() < minTs) continue;
+
+      const an = RhythmEngine.evaluate(t, state.goalId, state.engineMode);
+      if (an.isLowRhythm) continue;
+
+      const matched = an.ranked.filter(s => s.isGoalMatch && s.tier >= schedState.minTier);
+      if (!matched.length) continue;
+
+      // 每个时段取最高分方位作为推荐行动点
+      const topS = matched[0];
+      const slot = { dayKey, ts: t.getTime(), date: t, hour: h, sector: topS, goal: an.goal };
+      daySlots.push(slot);
+      allSlots.push(slot);
+
+      if (topS.tier >= 4) { peakCnt++; heatScore += 3; }
+      else if (topS.tier === 3) heatScore += 2;
+      else heatScore += 1;
+    }
+
+    daysList.push({
+      dayKey, date: dayDate, month: dayDate.getMonth() + 1, day: dayDate.getDate(), weekday: dayDate.getDay(),
+      slotCount: daySlots.length, peakCnt, heatScore, slots: daySlots
+    });
+  }
+
+  const maxScore = Math.max(1, ...daysList.map(d => d.heatScore));
+  daysList.forEach(d => {
+    if (d.slotCount === 0) { d.heatClass = 'h0'; return; }
+    const ratio = d.heatScore / maxScore;
+    if (ratio >= 0.76 && (d.peakCnt >= 1 || d.slotCount >= 3)) d.heatClass = 'h4';
+    else if (ratio >= 0.50) d.heatClass = 'h3';
+    else if (ratio >= 0.24) d.heatClass = 'h2';
+    else d.heatClass = 'h1';
+  });
+
+  const topDays = [...daysList]
+    .filter(d => d.slotCount > 0)
+    .sort((a, b) => (b.heatScore - a.heatScore) || (b.peakCnt - a.peakCnt) || (b.slotCount - a.slotCount))
+    .slice(0, 3);
+
+  schedState.lastScan = {
+    goalId: state.goalId, engineMode: state.engineMode, daysSpan: schedState.days,
+    daysList, allSlots, topDays
+  };
+  renderScheduleResults();
+}
+
+function selectSchedDay(key) {
+  schedState.selectedDay = (schedState.selectedDay === key) ? null : key;
+  schedState.pageSize = 18;
+  renderScheduleResults();
+}
+function setSchedSort(m) { schedState.sortBy = m; renderScheduleResults(); }
+function loadMoreSched() { schedState.pageSize += 18; renderScheduleResults(); }
+
+function renderScheduleResults() {
+  const box = document.getElementById('sch-results');
+  const scan = schedState.lastScan;
+  if (!box || !scan) return;
+
+  const { daysList, allSlots, topDays, daysSpan } = scan;
+  const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+  const g = GOALS[scan.goalId];
+
+  const firstDow = daysList.length ? ((daysList[0].weekday + 6) % 7) : 0;
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="hm-cell empty"></div>`;
+  daysList.forEach(d => {
+    const isSel = schedState.selectedDay === d.dayKey;
+    const lbl = d.day === 1 ? `${d.month}/1` : String(d.day);
+    const star = d.peakCnt > 0 ? `<span class="hm-star">★</span>` : '';
+    cells += `
+      <div class="hm-cell ${d.heatClass} ${isSel ? 'selected' : ''}" onclick="selectSchedDay('${d.dayKey}')">
+        ${star}
+        <span class="hm-day-num">${lbl}</span>
+        <span class="hm-cnt">${d.slotCount ? d.slotCount + '段' : '-'}</span>
+      </div>
+    `;
+  });
+
+  const topHtml = topDays.length ? `
+    <div class="hm-topdays">
+      <span style="font-size:11px;color:var(--muted);align-self:center;">🏆 黄金推荐日：</span>
+      ${topDays.map(d => `
+        <button type="button" class="hm-top-pill ${schedState.selectedDay===d.dayKey?'sel':''}" onclick="selectSchedDay('${d.dayKey}')">
+          ${d.month}/${d.day}(${weekdays[d.weekday].slice(1)}) ${d.slotCount}个时段${d.peakCnt?'★':''}
+        </button>
+      `).join('')}
+    </div>` : '';
+
+  const goodDaysCnt = daysList.filter(d => d.slotCount > 0).length;
+
+  let html = `
+    <div class="hm-card">
+      <div class="hm-top">
+        <span class="hm-title">${g.icon} 未来 ${daysSpan} 天「${g.label}」节律图（${goodDaysCnt}天适配）</span>
+        <span class="hm-legend">
+          平<i style="background:rgba(255,255,255,0.08)"></i><i style="background:rgba(52,211,153,0.22)"></i><i style="background:rgba(52,211,153,0.48)"></i><i style="background:linear-gradient(135deg,#10b981,#38bdf8)"></i>旺(★巅峰)
+        </span>
+      </div>
+      ${topHtml}
+      <div class="hm-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="hm-grid">${cells}</div>
+    </div>
+  `;
+
+  let list = schedState.selectedDay
+    ? (daysList.find(d => d.dayKey === schedState.selectedDay)?.slots || [])
+    : allSlots;
+
+  list = [...list].sort((a, b) => {
+    if (schedState.sortBy === 'score') {
+      if (b.sector.score !== a.sector.score) return b.sector.score - a.sector.score;
+      return a.ts - b.ts;
+    }
+    return a.ts - b.ts;
+  });
+
+  html += `
+    <div class="res-toolbar">
+      <span><strong>${schedState.selectedDay ? '📅 ' + schedState.selectedDay : '📋 全部推荐时段'}（${list.length} 个）</strong></span>
+      <div style="display:flex;gap:5px;">
+        ${schedState.selectedDay ? `<button type="button" class="mini-btn" onclick="selectSchedDay(null)">看全部</button>` : ''}
+        <button type="button" class="mini-btn ${schedState.sortBy==='time'?'active':''}" onclick="setSchedSort('time')">按时间</button>
+        <button type="button" class="mini-btn ${schedState.sortBy==='score'?'active':''}" onclick="setSchedSort('score')">按高分</button>
+      </div>
+    </div>
+  `;
+
+  if (!list.length) {
+    html += `<div class="card warn">当前高门槛下未找到匹配时段，可把上方切换为「全部顺畅窗口 (≥76分)」或拉长到 30/60 天。</div>`;
+    box.innerHTML = html;
+    return;
+  }
+
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const visible = list.slice(0, schedState.pageSize);
+  html += visible.map((r, idx) => {
+    const d = r.date, h = r.hour, s = r.sector, a = s.anchor;
+    const startH = h === 0 ? 23 : (h % 2 === 0 ? h - 1 : h);
+    const endH = (startH + 2) % 24;
+    const tStr = `${d.getMonth()+1}月${d.getDate()}日(${weekdays[d.getDay()]}) ${pad(startH)}:00-${pad(endH)}:00`;
+    const badgeBg = s.tier >= 4 ? '#34d399' : '#38bdf8';
+
+    return `
+      <div class="card ${s.tier>=4?'peak':'good'}">
+        <div class="card-title">
+          <span style="font-size:12.5px">#${idx+1} ${tStr}</span>
+          <span class="score-pill" style="background:${badgeBg}">${s.tierLabel} · ${s.score}分</span>
+        </div>
+        <div style="font-size:12px;color:#e2e8f0;">
+          推荐方位：<strong style="color:#a7f3d0">${s.dir}方（${s.center}°）</strong> ｜
+          色彩：<i class="color-dot" style="background:${a.hex}"></i>${a.color}<br>
+          随身小物：${a.obj}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button type="button" class="mini-btn active" style="flex:1;padding:6px;" onclick="jumpToAndGuide(${r.ts}, ${s.num})">✨ 查看完整 3 步做法</button>
+          <button type="button" class="mini-btn" style="flex:1;padding:6px;" onclick="jumpToCompass(${r.ts}, ${s.center})">🧭 切到罗盘定向</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (list.length > visible.length) {
+    html += `<button type="button" class="btn-ghost" onclick="loadMoreSched()">▼ 展开更多（已显示 ${visible.length} / ${list.length} 个）</button>`;
+  }
+  box.innerHTML = html;
+}
+
+function jumpToCompass(ts, deg) {
+  state.date = new Date(ts);
+  recomputeAndRender();
+  pointToSector(deg);
+  closeModal();
+}
+function jumpToAndGuide(ts, sectorNum) {
+  state.date = new Date(ts);
+  recomputeAndRender();
+  pointToSector(SECTORS[sectorNum].center);
+  openActionGuideModal(sectorNum);
+}
+
+/* 时间控制 */
+function openTimeModal() {
+  const d = state.date;
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const localVal = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  openModal('📅 指定日期与时间', `
+    <div class="card">
+      <div class="form-row">
+        <label>公历时间</label>
+        <input type="datetime-local" id="dt-input" value="${localVal}">
+      </div>
+      <button type="button" class="btn-full" onclick="applyCustomTime()">更新空间节律</button>
+    </div>
+  `);
+}
+function applyCustomTime() {
+  const val = document.getElementById('dt-input').value;
+  if (val) { state.date = new Date(val); schedState.lastScan = null; recomputeAndRender(); }
+  closeModal();
+}
+function stepHour(delta) {
+  state.date = new Date(state.date.getTime() + delta * 3600 * 1000);
+  recomputeAndRender();
+}
+function resetToNow() {
+  state.date = new Date();
+  schedState.lastScan = null;
+  recomputeAndRender();
+}
+function toggleTilt3D() {
+  state.tilt3D = !state.tilt3D;
+  document.getElementById('compass-shell').classList.toggle('tilt-3d', state.tilt3D);
+  const b = document.getElementById('btn-tilt');
+  b.style.borderColor = state.tilt3D ? 'var(--accent)' : '';
+  b.style.color = state.tilt3D ? '#a7f3d0' : '';
+}
+
+/* ============================================================================
+ * 七、手势拖拽旋转 & 初始化
+ * ============================================================================ */
+function initInteractions() {
+  const slider = document.getElementById('sim-slider');
+  const simVal = document.getElementById('sim-val');
+  slider.oninput = () => {
+    if (sensorCtrl.channel !== 'simulation') forceSensorChannel('simulation');
+    const raw = parseFloat(slider.value);
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    simVal.textContent = `${raw.toFixed(1)}°`;
+  };
+
+  const stage = document.getElementById('compass-stage');
+  let dragging = false, startAngle = 0, startRaw = 0, startX = 0, startY = 0;
+  function getPointerAngle(e) {
+    const rect = stage.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const pt = e.touches ? e.touches[0] : e;
+    return Math.atan2(pt.clientY - cy, pt.clientX - cx) * (180 / Math.PI);
+  }
+  stage.addEventListener('pointerdown', e => {
+    state.dragMoved = false;
+    if (state.sensorActive) return;
+    dragging = true; startX = e.clientX; startY = e.clientY;
+    startAngle = getPointerAngle(e); startRaw = sensorCtrl.rawDeg;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 6) state.dragMoved = true;
+    const raw = normDeg(startRaw - (getPointerAngle(e) - startAngle));
+    sensorCtrl.rawDeg = raw;
+    sensorCtrl.compDeg = normDeg(raw + sensorCtrl.declination);
+    state.targetHeading = sensorCtrl.compDeg;
+    slider.value = raw; simVal.textContent = `${raw.toFixed(1)}°`;
+  });
+  window.addEventListener('pointerup', () => {
+    dragging = false;
+    setTimeout(() => { state.dragMoved = false; }, 50);
+  });
+
+  syncSensorUI();
+}
+
+window.__onLunarReady = function() { recomputeAndRender(); };
+
+window.addEventListener('DOMContentLoaded', () => {
+  initInteractions();
+  if (typeof Solar !== 'undefined') recomputeAndRender();
+  requestAnimationFrame(animateLoop);
+});
+</script>
+</body>
+</html>
